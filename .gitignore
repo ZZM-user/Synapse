@@ -6,5 +6,5 @@ dist/
 wheels/
 *.egg-info
 
-# Virtual environments
-.venv
+frontend/node_modules
+/backend/.venv/
