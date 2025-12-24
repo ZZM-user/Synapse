@@ -5,19 +5,19 @@
       <n-layout style="height: 100vh">
         <n-layout-header bordered>
           <div style="display: flex; align-items: center; padding: 0 20px; height: 60px;">
-            <img src="/logo.svg" alt="Prism Logo" style="height: 32px; margin-right: 12px;"/>
-            <h2 style="margin: 0; font-size: 20px; font-weight: 600;">Prism Gateway</h2>
+            <img src="/logo.svg" alt="Synapse Logo" style="height: 32px; margin-right: 12px;"/>
+            <h2 style="margin: 0; font-size: 20px; font-weight: 600;">Synapse Gateway</h2>
           </div>
         </n-layout-header>
         <n-layout has-sider>
           <n-layout-sider bordered content-style="padding: 12px;">
             <n-menu
-              :options="menuOptions"
-              :value="activeMenuKey"
+                :options="menuOptions"
+                :value="activeMenuKey"
             />
           </n-layout-sider>
           <n-layout-content content-style="padding: 24px;">
-            <router-view />
+            <router-view/>
           </n-layout-content>
         </n-layout>
       </n-layout>
@@ -26,10 +26,10 @@
 </template>
 
 <script setup lang="ts">
-import { h, ref, computed, onMounted } from 'vue';
-import { RouterLink, useRoute } from 'vue-router';
-import { NLayout, NLayoutSider, NLayoutContent, NLayoutHeader, NMenu, NMessageProvider, NDialogProvider } from 'naive-ui';
-import type { MenuOption } from 'naive-ui';
+import {computed, h, onMounted} from 'vue';
+import {RouterLink, useRoute} from 'vue-router';
+import type {MenuOption} from 'naive-ui';
+import {NDialogProvider, NLayout, NLayoutContent, NLayoutHeader, NLayoutSider, NMenu, NMessageProvider} from 'naive-ui';
 
 // Import fonts
 import 'vfonts/Lato.css';
@@ -39,11 +39,11 @@ const route = useRoute();
 
 const menuOptions: MenuOption[] = [
   {
-    label: () => h(RouterLink, { to: { name: 'Home' } }, { default: () => '首页' }),
+    label: () => h(RouterLink, {to: {name: 'Home'}}, {default: () => '首页'}),
     key: 'Home',
   },
   {
-    label: () => h(RouterLink, { to: { name: 'Services' } }, { default: () => '服务管理' }),
+    label: () => h(RouterLink, {to: {name: 'Services'}}, {default: () => '服务管理'}),
     key: 'Services',
   },
 ];
@@ -66,11 +66,11 @@ onMounted(() => {
       <polygon points="95,27.5 95,72.5 50,95 50,50" fill="rgba(0,0,0,0.2)" />
     </svg>
   `;
-  const blob = new Blob([logoSvg], { type: 'image/svg+xml' });
+  const blob = new Blob([logoSvg], {type: 'image/svg+xml'});
   const url = URL.createObjectURL(blob);
   const img = new Image();
   img.src = url;
-  
+
   const link = document.createElement('link');
   link.rel = 'icon';
   link.href = url;

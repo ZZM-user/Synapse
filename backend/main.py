@@ -8,7 +8,7 @@ from mcp.openapi_to_mcp import convert_openapi_to_mcp
 from services.openapi_fetcher import fetch_openapi_spec
 
 app = FastAPI(
-    title="Prism MCP Gateway",
+    title="Synapse MCP Gateway",
     description="Converts OpenAPI specifications to AI Agent callable tools (MCP format).",
     version="0.1.0"
 )
