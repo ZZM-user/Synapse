@@ -1,5 +1,7 @@
-Prism 是一款轻量级、高性能的 MCP (Model Context Protocol) 协议转换网关。它旨在将企业内部现有的服务能力（Swagger）无缝转化为
-AI Agent 可调用的工具（Tools），并针对私有化 AI 平台提供深度定制能力。
+# Prism
+
+是一款轻量级、高性能的 MCP (Model Context Protocol) 协议转换网关。它旨在将企业内部现有的服务能力（Swagger）无缝转化为 AI
+Agent 可调用的工具（Tools），并针对私有化 AI 平台提供深度定制能力。
 
 # 🌟 项目初心 (Vision)
 
