@@ -9,6 +9,7 @@ from starlette.middleware.cors import CORSMiddleware
 from mcp.openapi_to_mcp import convert_openapi_to_mcp
 from services.openapi_fetcher import fetch_openapi_spec, extract_api_endpoints
 from models.combination import Combination, CombinationCreate, CombinationUpdate
+from models.mcp_server import McpServer, McpServerCreate, McpServerUpdate
 
 app = FastAPI(
     title="Synapse MCP Gateway",
@@ -75,6 +76,45 @@ MOCK_OPENAPI_SPEC = {
 # 内存存储（临时方案，后续可替换为数据库）
 combinations_db: dict[int, Combination] = {}
 combination_id_counter = 1
+
+mcp_servers_db: dict[int, McpServer] = {}
+mcp_server_id_counter = 1
+
+# 添加示例数据（可选，用于测试）
+def init_sample_data():
+    """初始化示例数据"""
+    global combination_id_counter, mcp_server_id_counter
+
+    # 示例组合
+    sample_combination = Combination(
+        id=1,
+        name="宠物店基础服务",
+        description="包含宠物查询和用户管理的基础接口",
+        status="active",
+        endpoints=[
+            {
+                "serviceName": "Petstore API",
+                "serviceUrl": "https://petstore3.swagger.io/api/v3/openapi.json",
+                "path": "/pet/{petId}",
+                "method": "GET",
+                "summary": "Find pet by ID"
+            },
+            {
+                "serviceName": "Petstore API",
+                "serviceUrl": "https://petstore3.swagger.io/api/v3/openapi.json",
+                "path": "/user/{username}",
+                "method": "GET",
+                "summary": "Get user by user name"
+            }
+        ],
+        createdAt=datetime.now(),
+        updatedAt=datetime.now()
+    )
+    combinations_db[1] = sample_combination
+    combination_id_counter = 2
+
+# 在应用启动时初始化示例数据
+init_sample_data()
 
 
 @app.get("/api/v1/endpoints")
@@ -217,6 +257,123 @@ async def delete_combination(combination_id: int = Path(..., description="组合
         raise HTTPException(status_code=404, detail=f"组合 ID {combination_id} 不存在")
 
     del combinations_db[combination_id]
+    return None
+
+
+# ============= MCP Server Management API =============
+
+@app.get("/api/v1/mcp-servers", response_model=list[McpServer])
+async def get_mcp_servers():
+    """
+    获取所有 MCP 服务列表
+    """
+    return list(mcp_servers_db.values())
+
+
+@app.get("/api/v1/mcp-servers/{server_id}", response_model=McpServer)
+async def get_mcp_server(server_id: int = Path(..., description="MCP 服务 ID")):
+    """
+    根据 ID 获取单个 MCP 服务
+    """
+    if server_id not in mcp_servers_db:
+        raise HTTPException(status_code=404, detail=f"MCP 服务 ID {server_id} 不存在")
+    return mcp_servers_db[server_id]
+
+
+@app.post("/api/v1/mcp-servers", response_model=McpServer, status_code=201)
+async def create_mcp_server(server: McpServerCreate):
+    """
+    创建新 MCP 服务
+    """
+    global mcp_server_id_counter
+
+    # 检查 prefix 是否已存在
+    for existing_server in mcp_servers_db.values():
+        if existing_server.prefix == server.prefix:
+            raise HTTPException(status_code=400, detail=f"MCP 前缀 '{server.prefix}' 已存在，请使用其他前缀")
+
+    # 验证所有 combination_ids 是否存在
+    for comb_id in server.combination_ids:
+        if comb_id not in combinations_db:
+            raise HTTPException(status_code=400, detail=f"组合 ID {comb_id} 不存在")
+
+    new_server = McpServer(
+        id=mcp_server_id_counter,
+        name=server.name,
+        prefix=server.prefix,
+        description=server.description,
+        combination_ids=server.combination_ids,
+        status="active",
+        createdAt=datetime.now(),
+        updatedAt=datetime.now()
+    )
+
+    mcp_servers_db[mcp_server_id_counter] = new_server
+    mcp_server_id_counter += 1
+
+    return new_server
+
+
+@app.put("/api/v1/mcp-servers/{server_id}", response_model=McpServer)
+async def update_mcp_server(
+    server_id: int = Path(..., description="MCP 服务 ID"),
+    server_update: McpServerUpdate = None
+):
+    """
+    更新 MCP 服务信息
+    """
+    if server_id not in mcp_servers_db:
+        raise HTTPException(status_code=404, detail=f"MCP 服务 ID {server_id} 不存在")
+
+    existing_server = mcp_servers_db[server_id]
+
+    # 更新字段
+    if server_update.name is not None:
+        existing_server.name = server_update.name
+    if server_update.description is not None:
+        existing_server.description = server_update.description
+    if server_update.combination_ids is not None:
+        # 验证所有 combination_ids 是否存在
+        for comb_id in server_update.combination_ids:
+            if comb_id not in combinations_db:
+                raise HTTPException(status_code=400, detail=f"组合 ID {comb_id} 不存在")
+        existing_server.combination_ids = server_update.combination_ids
+
+    existing_server.updatedAt = datetime.now()
+
+    return existing_server
+
+
+@app.patch("/api/v1/mcp-servers/{server_id}/status", response_model=McpServer)
+async def toggle_mcp_server_status(
+    server_id: int = Path(..., description="MCP 服务 ID"),
+    status: str = Query(..., description="新状态：active 或 inactive")
+):
+    """
+    切换 MCP 服务状态（启用/停用）
+    """
+    if server_id not in mcp_servers_db:
+        raise HTTPException(status_code=404, detail=f"MCP 服务 ID {server_id} 不存在")
+
+    if status not in ["active", "inactive"]:
+        raise HTTPException(status_code=400, detail="状态值必须为 'active' 或 'inactive'")
+
+    existing_server = mcp_servers_db[server_id]
+    existing_server.status = status
+    existing_server.updatedAt = datetime.now()
+
+    return existing_server
+
+
+@app.delete("/api/v1/mcp-servers/{server_id}", status_code=204)
+async def delete_mcp_server(server_id: int = Path(..., description="MCP 服务 ID")):
+    """
+    删除 MCP 服务
+    """
+    if server_id not in mcp_servers_db:
+        raise HTTPException(status_code=404, detail=f"MCP 服务 ID {server_id} 不存在")
+
+    del mcp_servers_db[server_id]
     return None
 
 

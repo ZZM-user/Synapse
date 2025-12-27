@@ -166,3 +166,127 @@ export async function deleteCombination(id: number): Promise<void> {
   }
 }
 
+// ============= MCP Server API =============
+
+export interface McpServer {
+  id: number;
+  name: string;
+  prefix: string;
+  description: string;
+  status: 'active' | 'inactive';
+  combination_ids: number[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface McpServerCreate {
+  name: string;
+  prefix: string;
+  description: string;
+  combination_ids: number[];
+}
+
+export interface McpServerUpdate {
+  name?: string;
+  description?: string;
+  combination_ids?: number[];
+}
+
+/**
+ * 获取所有 MCP 服务列表
+ */
+export async function getMcpServers(): Promise<McpServer[]> {
+  const response = await fetch(`${BASE_URL}/api/v1/mcp-servers`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 根据 ID 获取单个 MCP 服务
+ */
+export async function getMcpServer(id: number): Promise<McpServer> {
+  const response = await fetch(`${BASE_URL}/api/v1/mcp-servers/${id}`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 创建新 MCP 服务
+ */
+export async function createMcpServer(server: McpServerCreate): Promise<McpServer> {
+  const response = await fetch(`${BASE_URL}/api/v1/mcp-servers`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(server),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 更新 MCP 服务
+ */
+export async function updateMcpServer(id: number, server: McpServerUpdate): Promise<McpServer> {
+  const response = await fetch(`${BASE_URL}/api/v1/mcp-servers/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(server),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 切换 MCP 服务状态
+ */
+export async function toggleMcpServerStatus(id: number, status: 'active' | 'inactive'): Promise<McpServer> {
+  const response = await fetch(`${BASE_URL}/api/v1/mcp-servers/${id}/status?status=${status}`, {
+    method: 'PATCH',
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 删除 MCP 服务
+ */
+export async function deleteMcpServer(id: number): Promise<void> {
+  const response = await fetch(`${BASE_URL}/api/v1/mcp-servers/${id}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+}
+
