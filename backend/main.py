@@ -1,15 +1,19 @@
 # backend/main.py
 from typing import Optional
 from datetime import datetime
+import json
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, Path
+from fastapi import FastAPI, HTTPException, Query, Path, Request
+from fastapi.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 
 from mcp.openapi_to_mcp import convert_openapi_to_mcp
 from services.openapi_fetcher import fetch_openapi_spec, extract_api_endpoints
 from models.combination import Combination, CombinationCreate, CombinationUpdate
 from models.mcp_server import McpServer, McpServerCreate, McpServerUpdate
+from mcp.protocol import JsonRpcRequest, McpError, create_error_response
+from mcp.server import McpServerHandler
 
 app = FastAPI(
     title="Synapse MCP Gateway",
@@ -375,6 +379,114 @@ async def delete_mcp_server(server_id: int = Path(..., description="MCP 服务 I
 
     del mcp_servers_db[server_id]
     return None
+
+
+# ============= MCP Protocol Endpoint =============
+
+@app.post("/mcp/{prefix}")
+async def mcp_endpoint(prefix: str, request: Request):
+    """
+    MCP 协议端点（SSE 传输）
+
+    支持标准 MCP 协议，可直接在 Cursor、Claude Desktop 等工具中使用
+
+    配置示例：
+    {
+      "services": [
+        {
+          "name": "your-service-name",
+          "type": "sse",
+          "url": "http://localhost:8000/mcp/your-prefix"
+        }
+      ]
+    }
+    """
+    # 查找对应的 MCP Server
+    mcp_server = None
+    for server in mcp_servers_db.values():
+        if server.prefix == prefix:
+            mcp_server = server
+            break
+
+    if not mcp_server:
+        raise HTTPException(status_code=404, detail=f"MCP Server with prefix '{prefix}' not found")
+
+    # 检查服务状态
+    if mcp_server.status != "active":
+        raise HTTPException(status_code=403, detail=f"MCP Server '{prefix}' is inactive")
+
+    # 解析 JSON-RPC 请求
+    try:
+        body = await request.json()
+        rpc_request = JsonRpcRequest(**body)
+    except Exception as e:
+        error_response = create_error_response(
+            code=McpError.PARSE_ERROR,
+            message=f"Invalid JSON-RPC request: {str(e)}",
+            id=None
+        )
+        return error_response
+
+    # 创建 MCP Server Handler
+    # 将 Pydantic 模型转换为字典
+    server_dict = mcp_server.model_dump()
+    combinations_list = [comb.model_dump() for comb in combinations_db.values()]
+
+    handler = McpServerHandler(
+        server_config=server_dict,
+        combinations=combinations_list
+    )
+
+    # 处理请求
+    response = await handler.handle_request(
+        method=rpc_request.method,
+        params=rpc_request.params,
+        request_id=rpc_request.id
+    )
+
+    return response
+
+
+@app.get("/mcp/{prefix}/config")
+async def get_mcp_config(prefix: str):
+    """
+    获取 MCP Server 的配置信息
+
+    返回可以直接复制到 AI 工具配置文件中的配置
+    """
+    # 查找对应的 MCP Server
+    mcp_server = None
+    for server in mcp_servers_db.values():
+        if server.prefix == prefix:
+            mcp_server = server
+            break
+
+    if not mcp_server:
+        raise HTTPException(status_code=404, detail=f"MCP Server with prefix '{prefix}' not found")
+
+    # 生成 HTTP 方式配置（远程 MCP Server）
+    config = {
+        mcp_server.prefix: {
+            "url": f"http://localhost:8000/mcp/{mcp_server.prefix}"
+        }
+    }
+
+    example = {
+        "mcpServers": config
+    }
+
+    return {
+        "config": config,
+        "usage": "将以下配置复制到您的 AI 工具配置文件中（如 Claude Desktop 的 claude_desktop_config.json）",
+        "example": example,
+        "note": "这是一个远程 MCP Server，其他人只需要配置 URL 即可使用，无需安装任何文件",
+        "endpoint": f"http://localhost:8000/mcp/{mcp_server.prefix}",
+        "instructions": {
+            "claude_desktop": "打开 ~/Library/Application Support/Claude/claude_desktop_config.json (macOS) 或 %APPDATA%\\Claude\\claude_desktop_config.json (Windows)",
+            "cursor": "Settings → MCP Servers → 添加配置",
+            "general": "将 example 中的配置复制到 mcpServers 字段中，然后重启 AI 工具"
+        }
+    }
 
 
 if __name__ == '__main__':

@@ -290,3 +290,16 @@ export async function deleteMcpServer(id: number): Promise<void> {
   }
 }
 
+/**
+ * 获取 MCP 服务的配置信息
+ */
+export async function getMcpServerConfig(prefix: string): Promise<any> {
+  const response = await fetch(`${BASE_URL}/mcp/${prefix}/config`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}

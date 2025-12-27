@@ -176,6 +176,78 @@
         </template>
       </n-card>
     </n-modal>
+
+    <!-- MCP 配置查看 Modal -->
+    <n-modal v-model:show="showConfigModal">
+      <n-card
+          style="width: 800px"
+          title="MCP Server 配置"
+          :bordered="false"
+          size="huge"
+          role="dialog"
+          aria-modal="true"
+      >
+        <n-spin :show="loadingConfig">
+          <div v-if="currentMcpConfig" class="config-container">
+            <div class="config-info">
+              <h3>{{ currentMcpConfig.note }}</h3>
+              <p>{{ currentMcpConfig.usage }}</p>
+            </div>
+
+            <div class="config-code">
+              <div class="code-header">
+                <span>配置文件（claude_desktop_config.json）</span>
+                <n-button size="small" type="primary" @click="handleCopyConfig">
+                  复制配置
+                </n-button>
+              </div>
+              <pre><code>{{ JSON.stringify(currentMcpConfig.example, null, 2) }}</code></pre>
+            </div>
+
+            <div class="config-details">
+              <h3>服务端点</h3>
+              <n-descriptions bordered :column="1">
+                <n-descriptions-item label="服务名称">
+                  {{ Object.keys(currentMcpConfig.config)[0] }}
+                </n-descriptions-item>
+                <n-descriptions-item label="服务地址">
+                  <n-tag type="info">{{ currentMcpConfig.endpoint }}</n-tag>
+                </n-descriptions-item>
+              </n-descriptions>
+            </div>
+
+            <div class="config-help">
+              <h3>使用说明</h3>
+              <n-descriptions bordered :column="1">
+                <n-descriptions-item label="Claude Desktop">
+                  {{ currentMcpConfig.instructions.claude_desktop }}
+                </n-descriptions-item>
+                <n-descriptions-item label="Cursor">
+                  {{ currentMcpConfig.instructions.cursor }}
+                </n-descriptions-item>
+                <n-descriptions-item label="通用步骤">
+                  {{ currentMcpConfig.instructions.general }}
+                </n-descriptions-item>
+              </n-descriptions>
+
+              <div style="margin-top: 16px; padding: 12px; background: #f0f9ff; border-radius: 6px; border-left: 4px solid #0ea5e9;">
+                <p style="margin: 0; color: #0369a1; font-weight: 500;">💡 重要提示</p>
+                <ul style="margin: 8px 0 0 0; padding-left: 20px; color: #075985;">
+                  <li>这是一个远程 MCP Server，需要 Synapse 后端服务持续运行</li>
+                  <li>其他人只需要配置 URL 即可使用，无需安装文件</li>
+                  <li>如果部署在服务器上，将 localhost 替换为实际服务器地址</li>
+                  <li>配置后需要重启 AI 工具才能生效</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </n-spin>
+
+        <template #footer>
+          <n-button @click="showConfigModal = false">关闭</n-button>
+        </template>
+      </n-card>
+    </n-modal>
   </div>
 </template>
 
@@ -186,6 +258,8 @@ import {
   NButton,
   NCard,
   NDataTable,
+  NDescriptions,
+  NDescriptionsItem,
   NForm,
   NFormItem,
   NIcon,
@@ -206,7 +280,8 @@ import {
   updateMcpServer,
   toggleMcpServerStatus,
   deleteMcpServer,
-  getCombinations
+  getCombinations,
+  getMcpServerConfig
 } from '../services/api';
 
 // --- Data & State ---
@@ -239,6 +314,11 @@ const combinationSelectorMode = ref<'server' | 'manage'>('server');
 const showManageCombinationsModal = ref(false);
 const manageCombinationsSearchQuery = ref('');
 const tempCombinationIds = ref<number[]>([]);
+
+// MCP 配置查看状态
+const showConfigModal = ref(false);
+const currentMcpConfig = ref<any>(null);
+const loadingConfig = ref(false);
 
 // --- Lifecycle ---
 onMounted(async () => {
@@ -338,6 +418,11 @@ const columns = computed<DataTableColumns<McpServer>>(() => [
     key: 'actions',
     render: (row) =>
         h('div', {style: {display: 'flex', gap: '8px'}}, [
+          h(
+              NButton,
+              {size: 'small', onClick: () => handleViewConfig(row)},
+              {default: () => '查看配置'}
+          ),
           h(
               NButton,
               {size: 'small', onClick: () => handleEditServer(row)},
@@ -606,6 +691,34 @@ const handleRemoveCombinationFromManage = (combinationId: number) => {
   tempCombinationIds.value = tempCombinationIds.value.filter(id => id !== combinationId);
   message.success('组合已从列表中移除');
 };
+
+const handleViewConfig = async (server: McpServer) => {
+  loadingConfig.value = true;
+  try {
+    const config = await getMcpServerConfig(server.prefix);
+    currentMcpConfig.value = config;
+    showConfigModal.value = true;
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      message.error(`获取配置失败: ${error.message}`);
+    } else {
+      message.error('获取配置失败: 未知错误');
+    }
+  } finally {
+    loadingConfig.value = false;
+  }
+};
+
+const handleCopyConfig = () => {
+  if (!currentMcpConfig.value) return;
+
+  const configText = JSON.stringify(currentMcpConfig.value.example, null, 2);
+  navigator.clipboard.writeText(configText).then(() => {
+    message.success('配置已复制到剪贴板');
+  }).catch(() => {
+    message.error('复制失败，请手动复制');
+  });
+};
 </script>
 
 <style scoped>
@@ -632,4 +745,62 @@ const handleRemoveCombinationFromManage = (combinationId: number) => {
   align-items: center;
   margin-bottom: 16px;
 }
+
+.config-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.config-info h3,
+.config-details h3,
+.config-help h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.config-info p {
+  margin: 0;
+  color: #666;
+}
+
+.config-code {
+  background: #f5f5f5;
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.config-code pre {
+  margin: 0;
+  background: #fff;
+  padding: 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.config-code code {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.config-help ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.config-help li {
+  margin-bottom: 8px;
+  color: #666;
+}
+
 </style>
