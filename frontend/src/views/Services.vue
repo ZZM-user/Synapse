@@ -29,8 +29,11 @@
           <n-form-item path="name" label="服务名称">
             <n-input v-model:value="newService.name" placeholder="例如：用户中心"/>
           </n-form-item>
-          <n-form-item path="url" label="Swagger/OpenAPI URL">
-            <n-input v-model:value="newService.url" placeholder="http://.../v3/api-docs"/>
+          <n-form-item path="type" label="文档类型">
+            <n-select v-model:value="newService.type" :options="docTypeOptions" placeholder="选择文档类型"/>
+          </n-form-item>
+          <n-form-item path="url" label="文档地址">
+            <n-input v-model:value="newService.url" placeholder="http://.../openapi.json 或 http://.../swagger.yaml"/>
           </n-form-item>
         </n-form>
         <template #footer>
@@ -40,7 +43,6 @@
       </n-card>
     </n-modal>
 
-    <!-- View APIs Modal -->
     <n-modal v-model:show="showApisModal">
       <n-card
           style="width: 900px"
@@ -50,10 +52,20 @@
           role="dialog"
           aria-modal="true"
       >
+        <template #header-extra>
+          <n-button-group>
+            <n-input v-model:value="searchQuery" placeholder="搜索 API/描述" clearable style="margin-right: 12px;"/>
+            <n-button @click="showApisModal = false" text>
+              <n-icon :size="20">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18.3 5.71a.996.996 0 0 0-1.41 0L12 10.59L7.11 5.7A.996.996 0 1 0 5.7 7.11L10.59 12L5.7 16.89a.996.996 0 1 0 1.41 1.41L12 13.41l4.89 4.89a.996.996 0 1 0 1.41-1.41L13.41 12l4.89-4.89c.38-.38.38-1.02 0-1.4z" fill="currentColor"></path></svg>
+              </n-icon>
+            </n-button>
+          </n-button-group>
+        </template>
         <n-spin :show="loadingApis">
           <n-data-table
               :columns="apiColumns"
-              :data="apiEndpoints"
+              :data="filteredApiEndpoints"
               :max-height="400"
           />
         </n-spin>
@@ -63,9 +75,22 @@
 </template>
 
 <script setup lang="ts">
-import {h, ref} from 'vue';
+import {computed, h, ref} from 'vue';
 import type {DataTableColumns, FormInst, FormValidationError} from 'naive-ui';
-import {NButton, NCard, NDataTable, NForm, NFormItem, NInput, NModal, NSpin, useMessage} from 'naive-ui';
+import {
+  NButton,
+  NButtonGroup,
+  NCard,
+  NDataTable,
+  NForm,
+  NFormItem,
+  NIcon,
+  NInput,
+  NModal,
+  NSelect,
+  NSpin,
+  useMessage
+} from 'naive-ui';
 import {getApiEndpoints} from '../services/api';
 
 // --- Interfaces ---
@@ -73,6 +98,7 @@ interface Service {
   key: number;
   name: string;
   url: string;
+  type: string; // Add type property
   status: 'healthy' | 'unhealthy';
 }
 
@@ -95,26 +121,46 @@ const formRef = ref<FormInst | null>(null);
 const showAddModal = ref(false);
 const services = ref<Service[]>([
   // Use a real public API for demonstration
-  {key: 1, name: 'Petstore API', url: 'https://petstore3.swagger.io/api/v3/openapi.json', status: 'healthy'},
+  {key: 1, name: 'Petstore API', url: 'https://petstore3.swagger.io/api/v3/openapi.json', type: 'OpenAPI 3.0', status: 'healthy'},
 ]);
-const newService = ref({name: '', url: ''});
+const newService = ref({name: '', url: '', type: null}); // Initialize type to null
 
 // API viewing state
 const showApisModal = ref(false);
 const loadingApis = ref(false);
 const selectedService = ref<Service | null>(null);
 const apiEndpoints = ref<ApiEndpoint[]>([]);
+const searchQuery = ref('');
+
+const filteredApiEndpoints = computed(() => {
+  if (!searchQuery.value) {
+    return apiEndpoints.value;
+  }
+  return apiEndpoints.value.filter(api =>
+      api.path.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+      api.summary.toLowerCase().includes(searchQuery.value.toLowerCase())
+  );
+});
+
+// Document Type Options
+const docTypeOptions = [
+  {label: 'OpenAPI 3.0', value: 'OpenAPI 3.0'},
+  {label: 'Swagger 2.0', value: 'Swagger 2.0'},
+  {label: 'AsyncAPI', value: 'AsyncAPI'},
+];
 
 // --- Form Rules ---
 const rules = {
   name: {required: true, message: '请输入服务名称', trigger: 'blur'},
-  url: {required: true, message: '请输入 OpenAPI URL', trigger: 'blur'},
+  type: {required: true, message: '请选择文档类型', trigger: ['blur', 'change']},
+  url: {required: true, message: '请输入文档地址', trigger: 'blur'},
 };
 
 // --- Table Columns ---
 // Main services table
 const serviceTableColumns = ({viewApis, deleteService}: ServiceActions): DataTableColumns<Service> => [
   {title: '服务名称', key: 'name'},
+  {title: '文档类型', key: 'type'},
   {title: 'OpenAPI URL', key: 'url'},
   {
     title: '状态',
@@ -156,10 +202,16 @@ const columns = serviceTableColumns({
 const handleAddService = () => {
   formRef.value?.validate((errors: Array<FormValidationError> | undefined) => {
     if (!errors) {
-      services.value.push({key: Date.now(), name: newService.value.name, url: newService.value.url, status: 'healthy'});
+      services.value.push({
+        key: Date.now(),
+        name: newService.value.name,
+        url: newService.value.url,
+        type: newService.value.type as string, // Cast to string as it's validated as required
+        status: 'healthy'
+      });
       message.success('服务添加成功');
       showAddModal.value = false;
-      newService.value = {name: '', url: ''};
+      newService.value = {name: '', url: '', type: null};
     } else {
       message.error('请填写所有必填项');
     }
