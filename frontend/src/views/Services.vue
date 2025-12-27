@@ -123,7 +123,7 @@ const services = ref<Service[]>([
   // Use a real public API for demonstration
   {key: 1, name: 'Petstore API', url: 'https://petstore3.swagger.io/api/v3/openapi.json', type: 'OpenAPI 3.0', status: 'healthy'},
 ]);
-const newService = ref({name: '', url: '', type: null}); // Initialize type to null
+const newService = ref({name: '', url: '', type: ''}); // Initialize type to empty string
 
 // API viewing state
 const showApisModal = ref(false);
@@ -211,7 +211,7 @@ const handleAddService = () => {
       });
       message.success('服务添加成功');
       showAddModal.value = false;
-      newService.value = {name: '', url: '', type: null};
+      newService.value = {name: '', url: '', type: ''};
     } else {
       message.error('请填写所有必填项');
     }

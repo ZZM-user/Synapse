@@ -35,3 +35,134 @@ export async function getApiEndpoints(url: string) {
 
   return response.json();
 }
+
+// ============= Combination API =============
+
+export interface CombinationEndpoint {
+  serviceName: string;
+  serviceUrl: string;
+  path: string;
+  method: string;
+  summary: string;
+}
+
+export interface Combination {
+  id: number;
+  name: string;
+  description: string;
+  status: 'active' | 'inactive';
+  endpoints: CombinationEndpoint[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CombinationCreate {
+  name: string;
+  description: string;
+  endpoints: CombinationEndpoint[];
+}
+
+export interface CombinationUpdate {
+  name?: string;
+  description?: string;
+  endpoints?: CombinationEndpoint[];
+}
+
+/**
+ * 获取所有组合列表
+ */
+export async function getCombinations(): Promise<Combination[]> {
+  const response = await fetch(`${BASE_URL}/api/v1/combinations`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 根据 ID 获取单个组合
+ */
+export async function getCombination(id: number): Promise<Combination> {
+  const response = await fetch(`${BASE_URL}/api/v1/combinations/${id}`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 创建新组合
+ */
+export async function createCombination(combination: CombinationCreate): Promise<Combination> {
+  const response = await fetch(`${BASE_URL}/api/v1/combinations`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(combination),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 更新组合
+ */
+export async function updateCombination(id: number, combination: CombinationUpdate): Promise<Combination> {
+  const response = await fetch(`${BASE_URL}/api/v1/combinations/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(combination),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 切换组合状态
+ */
+export async function toggleCombinationStatus(id: number, status: 'active' | 'inactive'): Promise<Combination> {
+  const response = await fetch(`${BASE_URL}/api/v1/combinations/${id}/status?status=${status}`, {
+    method: 'PATCH',
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 删除组合
+ */
+export async function deleteCombination(id: number): Promise<void> {
+  const response = await fetch(`${BASE_URL}/api/v1/combinations/${id}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+}
+
