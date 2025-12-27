@@ -3,14 +3,23 @@ from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
+from starlette.middleware.cors import CORSMiddleware
 
 from mcp.openapi_to_mcp import convert_openapi_to_mcp
-from services.openapi_fetcher import fetch_openapi_spec
+from services.openapi_fetcher import fetch_openapi_spec, extract_api_endpoints
 
 app = FastAPI(
     title="Synapse MCP Gateway",
     description="Converts OpenAPI specifications to AI Agent callable tools (MCP format).",
     version="0.1.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Mock OpenAPI spec for development/testing if no URL is provided
@@ -62,6 +71,21 @@ MOCK_OPENAPI_SPEC = {
 }
 
 
+@app.get("/api/v1/endpoints")
+async def get_api_endpoints(url: str = Query(..., description="URL to the OpenAPI 3.0 specification.")):
+    """
+    Fetches an OpenAPI 3.0 specification and returns a simplified list of its endpoints.
+    """
+    try:
+        openapi_spec = await fetch_openapi_spec(url)
+        endpoints = extract_api_endpoints(openapi_spec)
+        return endpoints
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/mcp/v1/tools")
 async def get_mcp_tools(openapi_url: Optional[str] = Query(
     None,
@@ -84,6 +108,7 @@ async def get_mcp_tools(openapi_url: Optional[str] = Query(
         raise HTTPException(status_code=404, detail=f"OpenAPI spec file not found: {e}")
     except Exception as e:
         # Catch other potential errors during fetch or conversion
+        print(f"An unexpected error occurred: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process OpenAPI spec: {e}")
 
 

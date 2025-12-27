@@ -41,3 +41,26 @@ async def fetch_openapi_spec(source: str):
         except yaml.YAMLError as e:
             raise ValueError(f"Could not parse OpenAPI spec content from {source}: {e}")
 
+
+def extract_api_endpoints(spec: dict):
+    """
+    Extracts API endpoints from a parsed OpenAPI 3.0 specification.
+
+    Args:
+        spec (dict): The parsed OpenAPI specification.
+
+    Returns:
+        list: A list of dictionaries, each representing an API endpoint.
+    """
+    endpoints = []
+    paths = spec.get("paths", {})
+    for path, path_item in paths.items():
+        for method, operation in path_item.items():
+            if method in ["get", "put", "post", "delete", "patch", "head", "options", "trace"]:
+                endpoints.append({
+                    "path": path,
+                    "method": method.upper(),
+                    "summary": operation.get("summary", ""),
+                })
+    return endpoints
+

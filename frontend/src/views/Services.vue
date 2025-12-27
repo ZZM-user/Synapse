@@ -53,7 +53,7 @@
         <n-spin :show="loadingApis">
           <n-data-table
               :columns="apiColumns"
-              :data="mcpTools"
+              :data="apiEndpoints"
               :max-height="400"
           />
         </n-spin>
@@ -66,7 +66,7 @@
 import {h, ref} from 'vue';
 import type {DataTableColumns, FormInst, FormValidationError} from 'naive-ui';
 import {NButton, NCard, NDataTable, NForm, NFormItem, NInput, NModal, NSpin, useMessage} from 'naive-ui';
-import {getMcpTools} from '../services/api';
+import {getApiEndpoints} from '../services/api';
 
 // --- Interfaces ---
 interface Service {
@@ -76,11 +76,10 @@ interface Service {
   status: 'healthy' | 'unhealthy';
 }
 
-interface McpTool {
-  name: string;
-  description: string;
-  input_schema: object;
-  metadata: object;
+interface ApiEndpoint {
+  path: string;
+  method: string;
+  summary: string;
 }
 
 interface ServiceActions {
@@ -104,7 +103,7 @@ const newService = ref({name: '', url: ''});
 const showApisModal = ref(false);
 const loadingApis = ref(false);
 const selectedService = ref<Service | null>(null);
-const mcpTools = ref<McpTool[]>([]);
+const apiEndpoints = ref<ApiEndpoint[]>([]);
 
 // --- Form Rules ---
 const rules = {
@@ -135,9 +134,10 @@ const serviceTableColumns = ({viewApis, deleteService}: ServiceActions): DataTab
   },
 ];
 // API details table (in modal)
-const apiColumns: DataTableColumns<McpTool> = [
-  {title: 'Tool Name', key: 'name'},
-  {title: 'Description', key: 'description'},
+const apiColumns: DataTableColumns<ApiEndpoint> = [
+  {title: '路径', key: 'path'},
+  {title: '方法', key: 'method'},
+  {title: '描述', key: 'summary'},
 ];
 
 const columns = serviceTableColumns({
@@ -168,10 +168,9 @@ const handleAddService = () => {
 
 const handleViewApis = async (url: string) => {
   loadingApis.value = true;
-  mcpTools.value = [];
+  apiEndpoints.value = [];
   try {
-    const data = await getMcpTools(url);
-    mcpTools.value = data.tools;
+    apiEndpoints.value = await getApiEndpoints(url);
   } catch (error: unknown) {
     if (error instanceof Error) {
       message.error(`获取 API 失败: ${error.message}`);
@@ -197,3 +196,4 @@ h1 {
   margin: 0;
 }
 </style>
+
