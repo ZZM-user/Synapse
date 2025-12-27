@@ -51,7 +51,7 @@ import {
   NMenu,
   NMessageProvider
 } from 'naive-ui';
-import {CubeOutline, HomeOutline} from '@vicons/ionicons5';
+import {CubeOutline, HomeOutline, HardwareChipOutline, ServerOutline} from '@vicons/ionicons5';
 
 // Import fonts
 import 'vfonts/Lato.css';
@@ -70,6 +70,23 @@ const menuOptions: MenuOption[] = [
     key: 'Services',
     icon: () => h(NIcon, null, {default: () => h(CubeOutline)})
   },
+  {
+    label: 'MCP 管理',
+    key: 'Mcp',
+    icon: () => h(NIcon, null, {default: () => h(HardwareChipOutline)}),
+    children: [
+      {
+        label: () => h(RouterLink, {to: {name: 'McpCombination'}}, {default: () => 'MCP 组合'}),
+        key: 'McpCombination',
+        icon: () => h(NIcon, null, {default: () => h(ServerOutline)})
+      },
+      {
+        label: () => h(RouterLink, {to: {name: 'McpManagement'}}, {default: () => 'MCP 管理'}),
+        key: 'McpManagement',
+        icon: () => h(NIcon, null, {default: () => h(ServerOutline)})
+      }
+    ]
+  }
 ];
 
 // Computed property to determine the active menu key based on the current route
@@ -81,6 +98,10 @@ const currentRouteTitle = computed(() => {
       return '首页';
     case 'Services':
       return '服务管理';
+    case 'McpCombination':
+      return 'MCP 组合';
+    case 'McpManagement':
+      return 'MCP 管理';
     default:
       return 'Dashboard';
   }
