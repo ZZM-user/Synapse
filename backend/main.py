@@ -3,9 +3,10 @@ from typing import Optional
 from datetime import datetime
 import json
 import asyncio
+from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, Path, Request
+from fastapi import FastAPI, HTTPException, Query, Path as PathParam, Request
 from fastapi.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
@@ -31,6 +32,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 数据持久化路径
+DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR.mkdir(exist_ok=True)
+COMBINATIONS_FILE = DATA_DIR / "combinations.json"
+MCP_SERVERS_FILE = DATA_DIR / "mcp_servers.json"
 
 # Mock OpenAPI spec for development/testing if no URL is provided
 MOCK_OPENAPI_SPEC = {
@@ -87,10 +94,79 @@ combination_id_counter = 1
 mcp_servers_db: dict[int, McpServer] = {}
 mcp_server_id_counter = 1
 
+# 数据持久化函数
+def save_combinations():
+    """保存组合数据到 JSON 文件"""
+    data = {
+        "counter": combination_id_counter,
+        "combinations": {
+            str(id): comb.model_dump(mode='json')
+            for id, comb in combinations_db.items()
+        }
+    }
+    with open(COMBINATIONS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+
+def load_combinations():
+    """从 JSON 文件加载组合数据"""
+    global combinations_db, combination_id_counter
+
+    if not COMBINATIONS_FILE.exists():
+        return
+
+    try:
+        with open(COMBINATIONS_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        combination_id_counter = data.get("counter", 1)
+        combinations_db = {
+            int(id): Combination(**comb_data)
+            for id, comb_data in data.get("combinations", {}).items()
+        }
+        print(f"Loaded {len(combinations_db)} combinations from {COMBINATIONS_FILE}")
+    except Exception as e:
+        print(f"Failed to load combinations: {e}")
+
+def save_mcp_servers():
+    """保存 MCP 服务数据到 JSON 文件"""
+    data = {
+        "counter": mcp_server_id_counter,
+        "servers": {
+            str(id): server.model_dump(mode='json')
+            for id, server in mcp_servers_db.items()
+        }
+    }
+    with open(MCP_SERVERS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+
+def load_mcp_servers():
+    """从 JSON 文件加载 MCP 服务数据"""
+    global mcp_servers_db, mcp_server_id_counter
+
+    if not MCP_SERVERS_FILE.exists():
+        return
+
+    try:
+        with open(MCP_SERVERS_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        mcp_server_id_counter = data.get("counter", 1)
+        mcp_servers_db = {
+            int(id): McpServer(**server_data)
+            for id, server_data in data.get("servers", {}).items()
+        }
+        print(f"Loaded {len(mcp_servers_db)} MCP servers from {MCP_SERVERS_FILE}")
+    except Exception as e:
+        print(f"Failed to load MCP servers: {e}")
+
 # 添加示例数据（可选，用于测试）
 def init_sample_data():
-    """初始化示例数据"""
+    """初始化示例数据（仅在数据文件不存在时）"""
     global combination_id_counter, mcp_server_id_counter
+
+    # 只有在没有已保存数据时才初始化示例数据
+    if COMBINATIONS_FILE.exists() or MCP_SERVERS_FILE.exists():
+        return
 
     # 示例组合
     sample_combination = Combination(
@@ -119,9 +195,16 @@ def init_sample_data():
     )
     combinations_db[1] = sample_combination
     combination_id_counter = 2
+    save_combinations()
+    print("Initialized sample data")
 
-# 在应用启动时初始化示例数据
-init_sample_data()
+# 应用启动时加载数据
+@app.on_event("startup")
+async def startup_event():
+    """应用启动时加载持久化数据"""
+    load_combinations()
+    load_mcp_servers()
+    init_sample_data()
 
 
 # ============= Helper Functions =============
@@ -222,6 +305,7 @@ async def create_combination(combination: CombinationCreate):
 
     combinations_db[combination_id_counter] = new_combination
     combination_id_counter += 1
+    save_combinations()  # 保存数据
 
     return new_combination
 
@@ -248,6 +332,7 @@ async def update_combination(
         existing_combination.endpoints = combination_update.endpoints
 
     existing_combination.updatedAt = datetime.now()
+    save_combinations()  # 保存数据
 
     return existing_combination
 
@@ -269,6 +354,7 @@ async def toggle_combination_status(
     existing_combination = combinations_db[combination_id]
     existing_combination.status = status
     existing_combination.updatedAt = datetime.now()
+    save_combinations()  # 保存数据
 
     return existing_combination
 
@@ -282,6 +368,7 @@ async def delete_combination(combination_id: int = Path(..., description="组合
         raise HTTPException(status_code=404, detail=f"组合 ID {combination_id} 不存在")
 
     del combinations_db[combination_id]
+    save_combinations()  # 保存数据
     return None
 
 
@@ -335,6 +422,7 @@ async def create_mcp_server(server: McpServerCreate):
 
     mcp_servers_db[mcp_server_id_counter] = new_server
     mcp_server_id_counter += 1
+    save_mcp_servers()  # 保存数据
 
     return new_server
 
@@ -365,6 +453,7 @@ async def update_mcp_server(
         existing_server.combination_ids = server_update.combination_ids
 
     existing_server.updatedAt = datetime.now()
+    save_mcp_servers()  # 保存数据
 
     # 通知工具列表已变更
     await notify_tools_changed(existing_server.prefix)
@@ -389,6 +478,7 @@ async def toggle_mcp_server_status(
     existing_server = mcp_servers_db[server_id]
     existing_server.status = status
     existing_server.updatedAt = datetime.now()
+    save_mcp_servers()  # 保存数据
 
     # 通知工具列表已变更（状态变化也会影响可用工具）
     await notify_tools_changed(existing_server.prefix)
@@ -405,6 +495,7 @@ async def delete_mcp_server(server_id: int = Path(..., description="MCP 服务 I
         raise HTTPException(status_code=404, detail=f"MCP 服务 ID {server_id} 不存在")
 
     del mcp_servers_db[server_id]
+    save_mcp_servers()  # 保存数据
     return None
 
 

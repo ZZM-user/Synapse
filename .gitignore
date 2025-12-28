@@ -8,3 +8,6 @@ wheels/
 
 frontend/node_modules
 /backend/.venv/
+
+# Data persistence
+/backend/data/
