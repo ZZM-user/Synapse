@@ -1,65 +1,82 @@
 <template>
   <div class="login-container">
-    <n-card class="login-card" title="Synapse 登录">
+    <div class="login-box">
+      <div class="login-header">
+        <img src="/logo.svg" alt="Synapse Logo" class="logo" />
+        <h1 class="title">Synapse</h1>
+        <p class="subtitle">企业级 API 聚合与 MCP 服务平台</p>
+      </div>
+
       <n-form
         ref="formRef"
         :model="formValue"
         :rules="rules"
         size="large"
+        :show-label="false"
       >
-        <n-form-item path="username" label="用户名">
+        <n-form-item path="username">
           <n-input
             v-model:value="formValue.username"
-            placeholder="请输入用户名"
+            placeholder="用户名"
             @keydown.enter="handleLogin"
-          />
+          >
+            <template #prefix>
+              <n-icon :component="PersonOutline" />
+            </template>
+          </n-input>
         </n-form-item>
 
-        <n-form-item path="password" label="密码">
+        <n-form-item path="password">
           <n-input
             v-model:value="formValue.password"
             type="password"
             show-password-on="click"
-            placeholder="请输入密码"
+            placeholder="密码"
             @keydown.enter="handleLogin"
-          />
+          >
+            <template #prefix>
+              <n-icon :component="LockClosedOutline" />
+            </template>
+          </n-input>
         </n-form-item>
 
-        <n-space vertical>
-          <n-button
-            type="primary"
-            block
-            size="large"
-            :loading="loading"
-            @click="handleLogin"
-          >
-            登录
-          </n-button>
-        </n-space>
+        <n-alert v-if="errorMessage" type="error" style="margin-bottom: 16px" closable @close="errorMessage = ''">
+          {{ errorMessage }}
+        </n-alert>
+
+        <n-button
+          type="primary"
+          block
+          size="large"
+          :loading="loading"
+          @click="handleLogin"
+          strong
+        >
+          登录
+        </n-button>
       </n-form>
 
-      <n-alert v-if="errorMessage" type="error" style="margin-top: 16px">
-        {{ errorMessage }}
-      </n-alert>
+      <n-divider style="margin: 24px 0" />
 
-      <n-divider />
-
-      <n-text depth="3" style="font-size: 12px">
-        默认账户: admin / admin123
-      </n-text>
-    </n-card>
+      <div class="login-footer">
+        <n-text depth="3" style="font-size: 13px">
+          <n-icon :component="InformationCircleOutline" style="vertical-align: middle; margin-right: 4px" />
+          默认管理员账户：<n-text code>admin</n-text> / <n-text code>admin123</n-text>
+        </n-text>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { NCard, NForm, NFormItem, NInput, NButton, NSpace, NAlert, NDivider, NText, useMessage } from 'naive-ui';
+import { NForm, NFormItem, NInput, NButton, NAlert, NDivider, NText, NIcon } from 'naive-ui';
+import { PersonOutline, LockClosedOutline, InformationCircleOutline } from '@vicons/ionicons5';
 import { login } from '../services/api';
 import { setToken, setCurrentUser } from '../utils/auth';
 
 const router = useRouter();
-const message = useMessage();
 
 const formRef = ref();
 const loading = ref(false);
@@ -98,8 +115,6 @@ async function handleLogin() {
     setToken(response.access_token);
     setCurrentUser(response.user);
 
-    message.success('登录成功！');
-
     // 跳转到首页
     router.push('/');
   } catch (error: any) {
@@ -118,11 +133,73 @@ async function handleLogin() {
   align-items: center;
   min-height: 100vh;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
 }
 
-.login-card {
+.login-box {
   width: 100%;
-  max-width: 400px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  max-width: 420px;
+  background: rgba(255, 255, 255, 0.98);
+  border-radius: 16px;
+  padding: 48px 40px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 36px;
+}
+
+.logo {
+  height: 56px;
+  margin-bottom: 16px;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.title {
+  margin: 0 0 8px 0;
+  font-size: 32px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: #666;
+  font-weight: 400;
+}
+
+.login-footer {
+  text-align: center;
+}
+
+/* Form styling */
+:deep(.n-form-item) {
+  margin-bottom: 20px;
+}
+
+:deep(.n-input) {
+  border-radius: 8px;
+}
+
+:deep(.n-button) {
+  border-radius: 8px;
+  height: 44px;
+  font-size: 16px;
+  font-weight: 600;
 }
 </style>

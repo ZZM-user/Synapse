@@ -32,6 +32,12 @@ const routes = [
     name: 'McpManagement',
     component: () => import('../views/McpManagement.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/users',
+    name: 'UserManagement',
+    component: () => import('../views/UserManagement.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true }
   }
 ]
 
@@ -40,8 +46,8 @@ const router = createRouter({
   routes
 })
 
-// 路由守卫：检查认证状态
-router.beforeEach((to, from, next) => {
+// 路由守卫:检查认证状态
+router.beforeEach((to, _from, next) => {
   const requiresAuth = to.meta.requiresAuth !== false;
 
   if (requiresAuth && !isAuthenticated()) {

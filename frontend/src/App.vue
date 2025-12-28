@@ -2,7 +2,7 @@
   <n-message-provider>
     <n-dialog-provider>
       <!-- 登录页面：全屏显示，无导航 -->
-      <div v-if="route.name === 'Login'" style="height: 100vh">
+      <div v-if="route.name === 'Login'" class="login-page-wrapper">
         <router-view />
       </div>
 
@@ -69,7 +69,7 @@ import {
   NButton,
   NDropdown
 } from 'naive-ui';
-import {CubeOutline, HomeOutline, HardwareChipOutline, ServerOutline, PersonCircleOutline, LogOutOutline} from '@vicons/ionicons5';
+import {CubeOutline, HomeOutline, HardwareChipOutline, ServerOutline, PersonCircleOutline, LogOutOutline, PeopleOutline} from '@vicons/ionicons5';
 import { getCurrentUser, logout as authLogout } from './utils/auth';
 import type { User } from './services/api';
 
@@ -135,6 +135,11 @@ const menuOptions: MenuOption[] = [
         icon: () => h(NIcon, null, {default: () => h(ServerOutline)})
       }
     ]
+  },
+  {
+    label: () => h(RouterLink, {to: {name: 'UserManagement'}}, {default: () => '用户管理'}),
+    key: 'UserManagement',
+    icon: () => h(NIcon, null, {default: () => h(PeopleOutline)})
   }
 ];
 
@@ -151,6 +156,8 @@ const currentRouteTitle = computed(() => {
       return 'MCP 组合';
     case 'McpManagement':
       return 'MCP 管理';
+    case 'UserManagement':
+      return '用户管理';
     default:
       return 'Dashboard';
   }
@@ -161,5 +168,16 @@ const currentRouteTitle = computed(() => {
 body {
   margin: 0;
   font-family: 'Lato', sans-serif;
+}
+
+.login-page-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: auto;
 }
 </style>

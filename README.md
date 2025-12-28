@@ -14,7 +14,7 @@ AI 智能体世界。
 Synapse 旨在成为您 AI 架构中“业务感知”的突触。它不试图成为一个笨重、无所不包的 API 网关。相反，它专注于**自动化协议转换**、*
 *细粒度工具管理**和**极致适应性**。
 
-## ✨ 核心功能 (v0.6.2)
+## ✨ 核心功能 (v0.7.0)
 
 - **动态 OpenAPI 到 MCP 转换**：核心引擎可以从任何 URL 获取 OpenAPI 3.0 规范，并将其即时转换为符合 MCP v1 的工具集。
 - **全面的 Schema 解析**：
@@ -73,12 +73,18 @@ Synapse 旨在成为您 AI 架构中“业务感知”的突触。它不试图�
     - **👥 团队协作友好**：不同开发者可以同时修改不同的 API 模块，减少代码冲突。
     - **♻️ 代码复用**：每个路由模块都是独立的 APIRouter，可在其他项目中轻松复用。
     - **✅ 零影响升级**：所有 API 路径保持不变，前端无需任何修改。
-- **轻量级 API 鉴权** ⭐ **v0.6.2 新增**：
-    - **🔐 Bearer Token 认证**：基于环境变量的简单高效认证机制。
+- **企业级用户认证系统** ⭐ **v0.7.0 新增**：
+    - **🔐 JWT 认证机制**：基于 JSON Web Token 的现代化认证系统，Token 有效期 24 小时。
+    - **👥 完整用户管理**：支持用户的增删改查（CRUD），包括用户名、密码、角色、状态管理。
+    - **🎭 角色权限控制**：支持管理员（admin）和普通用户（user）两种角色，基于 RBAC 的权限控制。
+    - **🔒 密码安全**：使用 bcrypt 进行密码哈希，确保密码安全存储。
+    - **🖥️ 现代化登录页面**：全新设计的登录界面，支持渐变背景、动画效果、响应式布局。
+    - **👤 用户管理界面**：可视化的用户管理页面，支持创建用户、编辑用户、删除用户、状态控制。
+    - **🛡️ 智能路由守卫**：未登录用户自动跳转到登录页，已登录用户访问登录页自动跳转首页。
+    - **🚫 管理员专属**：用户管理功能仅管理员可访问，普通用户无权限。
+    - **📦 自动初始化**：首次启动自动创建默认管理员账户（admin/admin123）。
     - **🎯 选择性保护**：仅管理 API（`/api/v1/*`）需要认证，MCP 协议端点（`/mcp/*`）保持开放。
-    - **🔧 开发友好**：未配置 Token 时自动进入开发模式，无需认证即可访问。
-    - **🚀 生产就绪**：设置 `SYNAPSE_API_TOKEN` 环境变量即可启用生产模式认证。
-    - **🛡️ 安全建议**：内置 Token 生成指南和安全最佳实践。
+    - **✅ 生产就绪**：支持通过环境变量配置 JWT 密钥和默认管理员密码。
 
 ## ⚠️ 已知问题与限制
 
@@ -198,77 +204,82 @@ Synapse 默认使用 **SQLite** 数据库，数据存储在 `backend/data/synaps
 
 更多详细配置请参考 `backend/config.yaml` 文件中的注释。
 
-#### API 鉴权配置
+#### 用户认证配置
 
-Synapse 提供了轻量级的 **Bearer Token 认证**机制来保护管理 API。
+Synapse v0.7.0 提供了完整的 **JWT 用户认证系统**来保护管理 API。
 
-**工作模式**：
-- **开发模式**（默认）：未设置 `SYNAPSE_API_TOKEN` 环境变量时，所有管理 API 无需认证即可访问。
-- **生产模式**：设置 `SYNAPSE_API_TOKEN` 后，所有管理 API 需要在请求头中携带 `Authorization: Bearer <token>`。
+**核心特性**：
+- ✅ **自动初始化**：首次启动时自动创建默认管理员账户（`admin` / `admin123`）
+- ✅ **JWT 认证**：基于 JSON Web Token 的现代化认证，Token 有效期 24 小时
+- ✅ **角色权限**：支持管理员（admin）和普通用户（user）两种角色
+- ✅ **密码安全**：使用 bcrypt 哈希算法安全存储密码
+- ✅ **可视化管理**：提供用户管理界面，支持创建、编辑、删除用户
 
-**重要说明**：
-- ✅ **MCP 协议端点**（`/mcp/*`）始终保持开放，不受认证影响
-- 🔒 **管理 API**（`/api/v1/*`）受认证保护，包括：
+**受保护的 API**：
+- 🔒 **管理 API**（`/api/v1/*`）需要 JWT 认证：
+  - 认证管理（`/api/v1/auth/*`）
+  - 用户管理（`/api/v1/users/*`）- 仅管理员
   - 服务管理（`/api/v1/services`）
   - 组合管理（`/api/v1/combinations`）
   - MCP 服务管理（`/api/v1/mcp-servers`）
   - 仪表盘（`/api/v1/dashboard`）
   - 工具转换（`/api/v1/endpoints`, `/mcp/v1/tools`）
+- ✅ **MCP 协议端点**（`/mcp/*`）保持开放，不受认证影响
 
-**配置步骤**：
+**环境变量配置**（可选）：
 
-1. **生成安全的 Token**（推荐使用随机字符串）：
-   ```bash
-   # macOS/Linux
-   openssl rand -hex 32
+编辑 `.env` 文件自定义配置：
 
-   # 或者使用 Python
-   python -c "import secrets; print(secrets.token_hex(32))"
-   ```
+```env
+# JWT 密钥（生产环境务必修改为随机强密码）
+JWT_SECRET_KEY=your-secret-key-change-in-production
 
-2. **设置环境变量**（编辑 `.env` 文件）：
-   ```env
-   # API 认证 Token（留空则禁用鉴权，仅用于开发环境）
-   # 生产环境请务必设置强密码！
-   SYNAPSE_API_TOKEN=your_generated_token_here
-   ```
+# 默认管理员账户（可自定义，首次启动时创建）
+DEFAULT_ADMIN_USERNAME=admin
+DEFAULT_ADMIN_PASSWORD=admin123
+```
 
-3. **重启服务**使配置生效：
-   ```bash
-   .venv/bin/uvicorn main:app --reload --host 0.0.0.0 --port 8000
-   ```
+**生成安全的 JWT 密钥**：
 
-4. **在前端或 API 客户端中添加认证头**：
-   ```javascript
-   // JavaScript/Axios 示例
-   axios.get('http://localhost:8000/api/v1/services', {
-     headers: {
-       'Authorization': 'Bearer your_generated_token_here'
-     }
-   });
-   ```
+```bash
+# macOS/Linux
+openssl rand -hex 32
 
-   ```python
-   # Python/requests 示例
-   import requests
+# 或者使用 Python
+python -c "import secrets; print(secrets.token_hex(32))"
+```
 
-   headers = {
-       'Authorization': 'Bearer your_generated_token_here'
-   }
-   response = requests.get('http://localhost:8000/api/v1/services', headers=headers)
-   ```
+**使用 API 进行认证**：
 
-5. **测试鉴权功能**：
-   ```bash
-   cd backend
-   .venv/bin/python test_auth.py
-   ```
+```bash
+# 1. 登录获取 Token
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
+
+# 返回：
+# {
+#   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+#   "token_type": "bearer",
+#   "user": {...}
+# }
+
+# 2. 使用 Token 访问受保护的 API
+curl -X GET http://localhost:8000/api/v1/services \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+**前端自动处理**：
+- 前端会自动在所有 API 请求中添加 `Authorization` 头
+- Token 存储在浏览器 localStorage 中
+- Token 过期或无效时自动跳转到登录页
 
 **安全建议**：
-- 🔐 生产环境务必设置强随机 Token（至少 32 字节）
-- 🚫 不要将 Token 提交到版本控制系统（`.env` 已在 `.gitignore` 中）
-- 🔄 定期更换 Token（尤其是怀疑泄露时）
-- 📦 部署时通过环境变量或密钥管理系统注入 Token
+- 🔐 生产环境务必修改默认管理员密码
+- 🔑 生产环境务必设置强随机 JWT 密钥（至少 32 字节）
+- 🚫 不要将密钥和密码提交到版本控制系统（`.env` 已在 `.gitignore` 中）
+- 🔄 定期更换密钥和密码（尤其是怀疑泄露时）
+- 📦 部署时通过环境变量或密钥管理系统注入敏感信息
 
 ### 3. 设置前端
 
@@ -289,8 +300,20 @@ pnpm run dev
 
 ### 4. 探索！
 
-在浏览器中打开前端地址。您现在可以添加服务（使用 Petstore URL
-进行快速测试：`https://petstore3.swagger.io/api/v3/openapi.json`）并查看转换后的 AI 工具。
+在浏览器中打开前端地址 `http://localhost:5173`。
+
+**首次使用**：
+1. 使用默认管理员账户登录：
+   - 用户名：`admin`
+   - 密码：`admin123`
+
+2. 登录后您可以：
+   - 添加服务（使用 Petstore URL 进行快速测试：`https://petstore3.swagger.io/api/v3/openapi.json`）
+   - 创建组合（从多个服务中选择接口组合）
+   - 创建 MCP 服务（将组合打包成 MCP Server）
+   - 管理用户（仅管理员可访问）
+
+**安全建议**：生产环境请立即修改默认管理员密码！
 
 ## 🔌 使用 MCP Server
 
@@ -346,6 +369,7 @@ Synapse v0.5.1 完全支持标准 MCP 协议，可以直接在 Claude Desktop、
 - **数据库迁移**：**Alembic** - SQLAlchemy 的数据库迁移工具
 - **配置管理**：**PyYAML** + **python-dotenv** - YAML 配置和环境变量
 - **数据验证**：**Pydantic v2** - 数据验证和设置管理
+- **认证系统**：**python-jose** (JWT) + **passlib** (bcrypt) - 安全的用户认证
 
 ### 前端
 - **框架**：**Vue 3** + **Vite** + **TypeScript**
@@ -409,14 +433,30 @@ Synapse v0.5.1 完全支持标准 MCP 协议，可以直接在 Claude Desktop、
     - `[ ]` 实现安全层（白名单）以过滤暴露的 API。
     - `[ ]` 完善 OpenAPI 参数解析，生成完整的 JSON Schema。
 
-- **🔲 阶段 6：高级功能**
+- **✅ 阶段 6：用户认证系统 (已完成 v0.7.0)**
+    - `[x]` 实现 JWT 认证机制（python-jose + HS256 算法）。
+    - `[x]` 实现密码哈希和验证（bcrypt）。
+    - `[x]` 创建用户数据模型和数据库迁移。
+    - `[x]` 实现认证 API（login、logout、get current user）。
+    - `[x]` 实现用户管理 API（CRUD、仅管理员）。
+    - `[x]` 实现角色权限控制（admin/user）。
+    - `[x]` 实现默认管理员自动初始化。
+    - `[x]` 创建现代化登录页面（Vue 3 + Naive UI）。
+    - `[x]` 创建用户管理界面（列表、创建、编辑、删除）。
+    - `[x]` 实现前端路由守卫和自动重定向。
+    - `[x]` 实现自动 Token 注入和过期处理。
+    - `[ ]` 添加密码强度验证和复杂度要求。
+    - `[ ]` 添加用户操作日志记录。
+    - `[ ]` 实现 Token 刷新机制。
+
+- **🔲 阶段 7：高级功能**
     - `[ ]` 支持组合和服务的版本控制和历史记录。
     - `[ ]` 实现组合和服务的导入/导出功能（YAML/JSON）。
     - `[ ]` 添加使用统计和监控功能。
     - `[ ]` 实现级联删除保护（删除组合前检查是否被服务使用）。
 
-- **🔲 阶段 7：生产就绪**
-    - `[ ]` 实现可插拔的认证系统（拦截器）。
+- **🔲 阶段 8：生产就绪**
     - `[ ]` 编写全面的单元和集成测试。
     - `[ ]` 创建 `docker-compose.yml` 实现一键部署。
     - `[ ]` 添加结构化日志记录和基本可观测性。
+    - `[ ]` 性能优化和压力测试。
