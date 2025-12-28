@@ -3,12 +3,17 @@
 工具相关 API 路由（OpenAPI 转换）
 """
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 
+from core.auth import verify_token
 from mcp.openapi_to_mcp import convert_openapi_to_mcp
 from services.openapi_fetcher import fetch_openapi_spec, extract_api_endpoints
 
-router = APIRouter(tags=["tools"])
+# 路由器级别添加鉴权依赖，所有端点都需要认证
+router = APIRouter(
+    tags=["tools"],
+    dependencies=[Depends(verify_token)]
+)
 
 # Mock OpenAPI spec for development/testing if no URL is provided
 MOCK_OPENAPI_SPEC = {

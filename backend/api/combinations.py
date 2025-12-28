@@ -6,11 +6,17 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Path, Query, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.auth import verify_token
 from core.database import get_db
 from models.combination import Combination, CombinationCreate, CombinationUpdate
 from repositories.combination_repository import CombinationRepository
 
-router = APIRouter(prefix="/api/v1/combinations", tags=["combinations"])
+# 路由器级别添加鉴权依赖，所有端点都需要认证
+router = APIRouter(
+    prefix="/api/v1/combinations",
+    tags=["combinations"],
+    dependencies=[Depends(verify_token)]
+)
 
 
 @router.get("", response_model=list[Combination])

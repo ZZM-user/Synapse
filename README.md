@@ -73,6 +73,12 @@ Synapse 旨在成为您 AI 架构中“业务感知”的突触。它不试图�
     - **👥 团队协作友好**：不同开发者可以同时修改不同的 API 模块，减少代码冲突。
     - **♻️ 代码复用**：每个路由模块都是独立的 APIRouter，可在其他项目中轻松复用。
     - **✅ 零影响升级**：所有 API 路径保持不变，前端无需任何修改。
+- **轻量级 API 鉴权** ⭐ **v0.6.2 新增**：
+    - **🔐 Bearer Token 认证**：基于环境变量的简单高效认证机制。
+    - **🎯 选择性保护**：仅管理 API（`/api/v1/*`）需要认证，MCP 协议端点（`/mcp/*`）保持开放。
+    - **🔧 开发友好**：未配置 Token 时自动进入开发模式，无需认证即可访问。
+    - **🚀 生产就绪**：设置 `SYNAPSE_API_TOKEN` 环境变量即可启用生产模式认证。
+    - **🛡️ 安全建议**：内置 Token 生成指南和安全最佳实践。
 
 ## ⚠️ 已知问题与限制
 
@@ -191,6 +197,78 @@ Synapse 默认使用 **SQLite** 数据库，数据存储在 `backend/data/synaps
 6. **启动应用**，首次启动时会自动从 JSON 文件迁移数据（如果存在）。
 
 更多详细配置请参考 `backend/config.yaml` 文件中的注释。
+
+#### API 鉴权配置
+
+Synapse 提供了轻量级的 **Bearer Token 认证**机制来保护管理 API。
+
+**工作模式**：
+- **开发模式**（默认）：未设置 `SYNAPSE_API_TOKEN` 环境变量时，所有管理 API 无需认证即可访问。
+- **生产模式**：设置 `SYNAPSE_API_TOKEN` 后，所有管理 API 需要在请求头中携带 `Authorization: Bearer <token>`。
+
+**重要说明**：
+- ✅ **MCP 协议端点**（`/mcp/*`）始终保持开放，不受认证影响
+- 🔒 **管理 API**（`/api/v1/*`）受认证保护，包括：
+  - 服务管理（`/api/v1/services`）
+  - 组合管理（`/api/v1/combinations`）
+  - MCP 服务管理（`/api/v1/mcp-servers`）
+  - 仪表盘（`/api/v1/dashboard`）
+  - 工具转换（`/api/v1/endpoints`, `/mcp/v1/tools`）
+
+**配置步骤**：
+
+1. **生成安全的 Token**（推荐使用随机字符串）：
+   ```bash
+   # macOS/Linux
+   openssl rand -hex 32
+
+   # 或者使用 Python
+   python -c "import secrets; print(secrets.token_hex(32))"
+   ```
+
+2. **设置环境变量**（编辑 `.env` 文件）：
+   ```env
+   # API 认证 Token（留空则禁用鉴权，仅用于开发环境）
+   # 生产环境请务必设置强密码！
+   SYNAPSE_API_TOKEN=your_generated_token_here
+   ```
+
+3. **重启服务**使配置生效：
+   ```bash
+   .venv/bin/uvicorn main:app --reload --host 0.0.0.0 --port 8000
+   ```
+
+4. **在前端或 API 客户端中添加认证头**：
+   ```javascript
+   // JavaScript/Axios 示例
+   axios.get('http://localhost:8000/api/v1/services', {
+     headers: {
+       'Authorization': 'Bearer your_generated_token_here'
+     }
+   });
+   ```
+
+   ```python
+   # Python/requests 示例
+   import requests
+
+   headers = {
+       'Authorization': 'Bearer your_generated_token_here'
+   }
+   response = requests.get('http://localhost:8000/api/v1/services', headers=headers)
+   ```
+
+5. **测试鉴权功能**：
+   ```bash
+   cd backend
+   .venv/bin/python test_auth.py
+   ```
+
+**安全建议**：
+- 🔐 生产环境务必设置强随机 Token（至少 32 字节）
+- 🚫 不要将 Token 提交到版本控制系统（`.env` 已在 `.gitignore` 中）
+- 🔄 定期更换 Token（尤其是怀疑泄露时）
+- 📦 部署时通过环境变量或密钥管理系统注入 Token
 
 ### 3. 设置前端
 

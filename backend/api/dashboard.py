@@ -6,10 +6,16 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.auth import verify_token
 from core.database import get_db
 from models.db_models import CombinationDB, McpServerDB, ServiceDB
 
-router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
+# 路由器级别添加鉴权依赖，所有端点都需要认证
+router = APIRouter(
+    prefix="/api/v1/dashboard",
+    tags=["dashboard"],
+    dependencies=[Depends(verify_token)]
+)
 
 
 @router.get("/stats")

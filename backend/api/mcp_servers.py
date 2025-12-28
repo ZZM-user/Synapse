@@ -6,13 +6,19 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Path, Query, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.auth import verify_token
 from core.database import get_db
 from models.mcp_server import McpServer, McpServerCreate, McpServerUpdate
 from repositories.combination_repository import CombinationRepository
 from repositories.mcp_server_repository import McpServerRepository
 from mcp.session import session_manager
 
-router = APIRouter(prefix="/api/v1/mcp-servers", tags=["mcp-servers"])
+# 路由器级别添加鉴权依赖，所有端点都需要认证
+router = APIRouter(
+    prefix="/api/v1/mcp-servers",
+    tags=["mcp-servers"],
+    dependencies=[Depends(verify_token)]
+)
 
 
 async def notify_tools_changed(prefix: str):

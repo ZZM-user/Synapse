@@ -5,11 +5,17 @@
 from fastapi import APIRouter, HTTPException, Path, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.auth import verify_token
 from core.database import get_db
 from models.service import Service, ServiceCreate, ServiceUpdate
 from repositories.service_repository import ServiceRepository
 
-router = APIRouter(prefix="/api/v1/services", tags=["services"])
+# 路由器级别添加鉴权依赖，所有端点都需要认证
+router = APIRouter(
+    prefix="/api/v1/services",
+    tags=["services"],
+    dependencies=[Depends(verify_token)]
+)
 
 
 @router.get("", response_model=list[Service])
