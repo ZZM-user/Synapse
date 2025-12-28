@@ -66,6 +66,7 @@ Synapse 旨在成为您 AI 架构中“业务感知”的突触。它不试图�
   {
     "mcpServers": {
       "synapse": {
+        "type": "sse",
         "url": "http://localhost:8000/mcp/synapse"
       }
     }
@@ -157,6 +158,7 @@ Synapse v0.5.1 完全支持标准 MCP 协议，可以直接在 Claude Desktop、
    {
      "mcpServers": {
        "synapse": {
+         "type": "sse",
          "url": "http://localhost:8000/mcp/synapse"
        }
      }
