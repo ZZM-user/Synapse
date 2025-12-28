@@ -54,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, h, ref, onMounted, renderIcon} from 'vue';
+import {computed, h, ref, onMounted} from 'vue';
 import {RouterLink, useRoute, useRouter} from 'vue-router';
 import type {MenuOption} from 'naive-ui';
 import {
@@ -82,6 +82,11 @@ const route = useRoute();
 const router = useRouter();
 const message = useMessage();
 const currentUser = ref<User | null>(null);
+
+// 辅助函数：渲染图标
+function renderIcon(icon: any) {
+  return () => h(NIcon, null, { default: () => h(icon) });
+}
 
 // 加载当前用户信息
 onMounted(() => {
