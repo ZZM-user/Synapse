@@ -1,6 +1,7 @@
 # backend/main.py
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path as PathLib
 from typing import Optional
@@ -18,10 +19,23 @@ from models.combination import Combination, CombinationCreate, CombinationUpdate
 from models.mcp_server import McpServer, McpServerCreate, McpServerUpdate
 from services.openapi_fetcher import fetch_openapi_spec, extract_api_endpoints
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理 - 启动和关闭时的操作"""
+    # 启动时加载持久化数据
+    load_combinations()
+    load_mcp_servers()
+    init_sample_data()
+    yield
+    # 关闭时可以添加清理操作（如果需要）
+
+
 app = FastAPI(
     title="Synapse MCP Gateway",
     description="Converts OpenAPI specifications to AI Agent callable tools (MCP format).",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -201,15 +215,6 @@ def init_sample_data():
     combination_id_counter = 2
     save_combinations()
     print("Initialized sample data")
-
-
-# 应用启动时加载数据
-@app.on_event("startup")
-async def startup_event():
-    """应用启动时加载持久化数据"""
-    load_combinations()
-    load_mcp_servers()
-    init_sample_data()
 
 
 # ============= Helper Functions =============
