@@ -1,23 +1,22 @@
 # backend/main.py
-from typing import Optional
-from datetime import datetime
-import json
 import asyncio
-from pathlib import Path
+import json
+from datetime import datetime
+from pathlib import Path as PathLib
+from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, Path as PathParam, Request
-from fastapi.responses import StreamingResponse
-from starlette.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException, Query, Path, Request
 from sse_starlette.sse import EventSourceResponse
+from starlette.middleware.cors import CORSMiddleware
 
 from mcp.openapi_to_mcp import convert_openapi_to_mcp
-from services.openapi_fetcher import fetch_openapi_spec, extract_api_endpoints
-from models.combination import Combination, CombinationCreate, CombinationUpdate
-from models.mcp_server import McpServer, McpServerCreate, McpServerUpdate
 from mcp.protocol import JsonRpcRequest, McpError, create_error_response
 from mcp.server import McpServerHandler
 from mcp.session import session_manager
+from models.combination import Combination, CombinationCreate, CombinationUpdate
+from models.mcp_server import McpServer, McpServerCreate, McpServerUpdate
+from services.openapi_fetcher import fetch_openapi_spec, extract_api_endpoints
 
 app = FastAPI(
     title="Synapse MCP Gateway",
@@ -34,7 +33,7 @@ app.add_middleware(
 )
 
 # 数据持久化路径
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = PathLib(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 COMBINATIONS_FILE = DATA_DIR / "combinations.json"
 MCP_SERVERS_FILE = DATA_DIR / "mcp_servers.json"
@@ -94,6 +93,7 @@ combination_id_counter = 1
 mcp_servers_db: dict[int, McpServer] = {}
 mcp_server_id_counter = 1
 
+
 # 数据持久化函数
 def save_combinations():
     """保存组合数据到 JSON 文件"""
@@ -106,6 +106,7 @@ def save_combinations():
     }
     with open(COMBINATIONS_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+
 
 def load_combinations():
     """从 JSON 文件加载组合数据"""
@@ -127,6 +128,7 @@ def load_combinations():
     except Exception as e:
         print(f"Failed to load combinations: {e}")
 
+
 def save_mcp_servers():
     """保存 MCP 服务数据到 JSON 文件"""
     data = {
@@ -138,6 +140,7 @@ def save_mcp_servers():
     }
     with open(MCP_SERVERS_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+
 
 def load_mcp_servers():
     """从 JSON 文件加载 MCP 服务数据"""
@@ -158,6 +161,7 @@ def load_mcp_servers():
         print(f"Loaded {len(mcp_servers_db)} MCP servers from {MCP_SERVERS_FILE}")
     except Exception as e:
         print(f"Failed to load MCP servers: {e}")
+
 
 # 添加示例数据（可选，用于测试）
 def init_sample_data():
@@ -197,6 +201,7 @@ def init_sample_data():
     combination_id_counter = 2
     save_combinations()
     print("Initialized sample data")
+
 
 # 应用启动时加载数据
 @app.on_event("startup")
@@ -312,8 +317,8 @@ async def create_combination(combination: CombinationCreate):
 
 @app.put("/api/v1/combinations/{combination_id}", response_model=Combination)
 async def update_combination(
-    combination_id: int = Path(..., description="组合 ID"),
-    combination_update: CombinationUpdate = None
+        combination_id: int = Path(..., description="组合 ID"),
+        combination_update: CombinationUpdate = None
 ):
     """
     更新组合信息
@@ -339,8 +344,8 @@ async def update_combination(
 
 @app.patch("/api/v1/combinations/{combination_id}/status", response_model=Combination)
 async def toggle_combination_status(
-    combination_id: int = Path(..., description="组合 ID"),
-    status: str = Query(..., description="新状态：active 或 inactive")
+        combination_id: int = Path(..., description="组合 ID"),
+        status: str = Query(..., description="新状态：active 或 inactive")
 ):
     """
     切换组合状态（启用/停用）
@@ -429,8 +434,8 @@ async def create_mcp_server(server: McpServerCreate):
 
 @app.put("/api/v1/mcp-servers/{server_id}", response_model=McpServer)
 async def update_mcp_server(
-    server_id: int = Path(..., description="MCP 服务 ID"),
-    server_update: McpServerUpdate = None
+        server_id: int = Path(..., description="MCP 服务 ID"),
+        server_update: McpServerUpdate = None
 ):
     """
     更新 MCP 服务信息
@@ -463,8 +468,8 @@ async def update_mcp_server(
 
 @app.patch("/api/v1/mcp-servers/{server_id}/status", response_model=McpServer)
 async def toggle_mcp_server_status(
-    server_id: int = Path(..., description="MCP 服务 ID"),
-    status: str = Query(..., description="新状态：active 或 inactive")
+        server_id: int = Path(..., description="MCP 服务 ID"),
+        status: str = Query(..., description="新状态：active 或 inactive")
 ):
     """
     切换 MCP 服务状态（启用/停用）
