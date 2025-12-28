@@ -189,14 +189,9 @@
       >
         <n-spin :show="loadingConfig">
           <div v-if="currentMcpConfig" class="config-container">
-            <div class="config-info">
-              <h3>{{ currentMcpConfig.note }}</h3>
-              <p>{{ currentMcpConfig.usage }}</p>
-            </div>
-
             <div class="config-code">
               <div class="code-header">
-                <span>配置文件（claude_desktop_config.json）</span>
+                <span>配置内容</span>
                 <n-button size="small" type="primary" @click="handleCopyConfig">
                   复制配置
                 </n-button>
@@ -204,41 +199,19 @@
               <pre><code>{{ JSON.stringify(currentMcpConfig.example, null, 2) }}</code></pre>
             </div>
 
-            <div class="config-details">
-              <h3>服务端点</h3>
-              <n-descriptions bordered :column="1">
-                <n-descriptions-item label="服务名称">
-                  {{ Object.keys(currentMcpConfig.config)[0] }}
-                </n-descriptions-item>
-                <n-descriptions-item label="MCP 端点">
-                  <n-tag type="success">{{ currentMcpConfig.endpoint }}</n-tag>
-                  <p style="margin: 4px 0 0 0; font-size: 12px; color: #666;">
-                    此端点同时支持 GET（SSE流）和 POST（JSON-RPC请求）
-                  </p>
-                </n-descriptions-item>
-              </n-descriptions>
-            </div>
-
             <div class="config-help">
-              <h3>使用说明</h3>
-              <n-descriptions bordered :column="1">
+              <h3>配置文件位置</h3>
+              <n-descriptions bordered :column="1" size="small">
                 <n-descriptions-item label="Claude Desktop">
                   {{ currentMcpConfig.instructions.claude_desktop }}
                 </n-descriptions-item>
                 <n-descriptions-item label="Cursor">
                   {{ currentMcpConfig.instructions.cursor }}
                 </n-descriptions-item>
-                <n-descriptions-item label="通用步骤">
-                  {{ currentMcpConfig.instructions.general }}
-                </n-descriptions-item>
               </n-descriptions>
-
-              <div style="margin-top: 16px; padding: 12px; background: #f0f9ff; border-radius: 6px; border-left: 4px solid #0ea5e9;">
-                <p style="margin: 0; color: #0369a1; font-weight: 500;">💡 重要提示</p>
-                <ul style="margin: 8px 0 0 0; padding-left: 20px; color: #075985;">
-                  <li v-for="(tip, index) in currentMcpConfig.important" :key="index">{{ tip }}</li>
-                </ul>
-              </div>
+              <p style="margin-top: 12px; color: #666; font-size: 13px;">
+                配置后需要重启 AI 工具才能生效
+              </p>
             </div>
           </div>
         </n-spin>

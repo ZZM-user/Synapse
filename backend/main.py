@@ -633,6 +633,7 @@ async def get_mcp_config(prefix: str):
     # 生成标准 HTTP + SSE 配置（单一端点）
     config = {
         mcp_server.prefix: {
+            "type": "sse",
             "url": f"http://localhost:8000/mcp/{mcp_server.prefix}"
         }
     }
@@ -643,23 +644,12 @@ async def get_mcp_config(prefix: str):
 
     return {
         "config": config,
-        "usage": "将以下配置复制到您的 AI 工具配置文件中（如 Claude Desktop 的 claude_desktop_config.json）",
         "example": example,
-        "note": "这是一个标准的远程 MCP Server，支持 HTTP + SSE 传输（单一端点同时支持 GET 和 POST）",
         "endpoint": f"http://localhost:8000/mcp/{mcp_server.prefix}",
         "instructions": {
-            "claude_desktop": "打开 ~/Library/Application Support/Claude/claude_desktop_config.json (macOS) 或 %APPDATA%\\Claude\\claude_desktop_config.json (Windows)",
-            "cursor": "Settings → MCP Servers → 添加配置",
-            "general": "将 example 中的配置复制到 mcpServers 字段中，然后重启 AI 工具"
-        },
-        "important": [
-            "单一端点同时处理 GET（SSE流）和 POST（JSON-RPC请求）",
-            "初始化时服务器会返回 Mcp-Session-Id 头",
-            "后续请求需要在头部携带此 Session ID",
-            "配置更新后客户端会通过 SSE 流收到通知",
-            "Synapse 后端服务需要持续运行",
-            "如果部署在服务器上，将 localhost 替换为实际服务器地址"
-        ]
+            "claude_desktop": "~/Library/Application Support/Claude/claude_desktop_config.json (macOS)",
+            "cursor": "Settings → MCP Servers"
+        }
     }
 
 
