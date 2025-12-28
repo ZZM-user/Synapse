@@ -1,10 +1,10 @@
 """
 SQLAlchemy 数据库表模型
-定义了 Combination 和 McpServer 的数据库结构
+定义了 Combination、McpServer、Service 和 User 的数据库结构
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Index
+from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Index, Boolean
 from sqlalchemy.orm import declarative_base
 
 # 创建基类
@@ -94,3 +94,34 @@ class ServiceDB(Base):
 
     def __repr__(self):
         return f"<ServiceDB(id={self.id}, name='{self.name}', type='{self.type}', status='{self.status}')>"
+
+
+class UserDB(Base):
+    """用户数据库模型"""
+    __tablename__ = "users"
+
+    # 主键
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+
+    # 基本信息
+    username = Column(String(100), unique=True, nullable=False, index=True, comment="用户名（唯一）")
+    password_hash = Column(String(255), nullable=False, comment="密码哈希")
+
+    # 用户角色
+    role = Column(String(20), default="user", nullable=False, index=True, comment="角色：admin/user")
+
+    # 状态
+    is_active = Column(Boolean, default=True, nullable=False, comment="是否激活")
+
+    # 时间戳
+    created_at = Column(DateTime, default=datetime.now, nullable=False, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, comment="更新时间")
+    last_login_at = Column(DateTime, nullable=True, comment="最后登录时间")
+
+    # 索引
+    __table_args__ = (
+        Index('idx_user_role_active', 'role', 'is_active'),
+    )
+
+    def __repr__(self):
+        return f"<UserDB(id={self.id}, username='{self.username}', role='{self.role}', is_active={self.is_active})>"

@@ -15,10 +15,11 @@ from starlette.middleware.cors import CORSMiddleware
 from core.config import load_config
 from core.database import init_database
 from core.migration import auto_migrate_if_needed
+from core.init_admin import ensure_default_admin
 from models.db_models import Base
 
 # API 路由
-from api import services, combinations, mcp_servers, dashboard, tools, mcp_protocol
+from api import services, combinations, mcp_servers, dashboard, tools, mcp_protocol, auth, users
 
 # 数据目录
 DATA_DIR = PathLib(__file__).parent / "data"
@@ -57,6 +58,11 @@ async def lifespan(app: FastAPI):
         if migrated:
             print("   数据迁移完成！")
 
+    # 5. 确保默认管理员账户存在
+    print("👤 检查默认管理员账户...")
+    async with manager.session_maker() as session:
+        await ensure_default_admin(session)
+
     print("=" * 60)
     print("✅ Synapse MCP Gateway 已启动")
     print("   访问 API 文档: http://localhost:8000/docs")
@@ -86,11 +92,18 @@ app.add_middleware(
 )
 
 # ============= 注册路由 =============
+# 认证和用户管理
+app.include_router(auth.router)
+app.include_router(users.router)
+
+# 业务功能
 app.include_router(services.router)
 app.include_router(combinations.router)
 app.include_router(mcp_servers.router)
 app.include_router(dashboard.router)
 app.include_router(tools.router)
+
+# MCP 协议（不受认证保护）
 app.include_router(mcp_protocol.router)
 
 

@@ -5,16 +5,16 @@
 from fastapi import APIRouter, HTTPException, Path, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.auth import verify_token
+from core.auth import get_current_user
 from core.database import get_db
 from models.service import Service, ServiceCreate, ServiceUpdate
 from repositories.service_repository import ServiceRepository
 
-# 路由器级别添加鉴权依赖，所有端点都需要认证
+# 路由器级别添加 JWT 认证依赖，所有端点都需要登录
 router = APIRouter(
     prefix="/api/v1/services",
     tags=["services"],
-    dependencies=[Depends(verify_token)]
+    dependencies=[Depends(get_current_user)]
 )
 
 

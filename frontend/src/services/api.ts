@@ -1,6 +1,216 @@
 // frontend/src/services/api.ts
 
+import { getToken } from '../utils/auth';
+
 const BASE_URL = 'http://localhost:8000'; // Backend API base URL
+
+/**
+ * 创建请求头，自动添加 Authorization
+ */
+function getHeaders(): HeadersInit {
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+
+  const token = getToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  return headers;
+}
+
+/**
+ * 执行 fetch 请求并处理错误
+ */
+async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+  const headers = getHeaders();
+
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      ...headers,
+      ...(options.headers || {}),
+    },
+  });
+
+  // 如果返回 401，可能是 Token 过期，跳转到登录页
+  if (response.status === 401) {
+    // 清除 Token 并跳转到登录页
+    localStorage.removeItem('synapse_access_token');
+    localStorage.removeItem('synapse_current_user');
+    window.location.href = '/login';
+    throw new Error('Unauthorized - please login again');
+  }
+
+  return response;
+}
+
+// ============= Authentication API =============
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
+export interface User {
+  id: number;
+  username: string;
+  role: 'admin' | 'user';
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  last_login_at?: string;
+}
+
+/**
+ * 用户登录
+ */
+export async function login(credentials: LoginRequest): Promise<LoginResponse> {
+  const response = await fetch(`${BASE_URL}/api/v1/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(credentials),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Login failed' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 获取当前用户信息
+ */
+export async function getCurrentUserInfo(): Promise<User> {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/auth/me`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Failed to get user info' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 用户登出
+ */
+export async function logout(): Promise<void> {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/auth/logout`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Logout failed' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+}
+
+// ============= User Management API (Admin Only) =============
+
+export interface UserCreate {
+  username: string;
+  password: string;
+  role: 'admin' | 'user';
+}
+
+export interface UserUpdate {
+  password?: string;
+  role?: 'admin' | 'user';
+  is_active?: boolean;
+}
+
+export interface UserListResponse {
+  users: User[];
+  total: number;
+}
+
+/**
+ * 获取用户列表（仅管理员）
+ */
+export async function getUsers(skip: number = 0, limit: number = 100): Promise<UserListResponse> {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/users?skip=${skip}&limit=${limit}`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Failed to get users' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 获取单个用户（仅管理员）
+ */
+export async function getUser(id: number): Promise<User> {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/users/${id}`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'User not found' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 创建新用户（仅管理员）
+ */
+export async function createUser(user: UserCreate): Promise<User> {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/users`, {
+    method: 'POST',
+    body: JSON.stringify(user),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Failed to create user' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 更新用户（仅管理员）
+ */
+export async function updateUser(id: number, user: UserUpdate): Promise<User> {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/users/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(user),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Failed to update user' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 删除用户（仅管理员）
+ */
+export async function deleteUser(id: number): Promise<void> {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/users/${id}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Failed to delete user' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+}
 
 // ============= Service API =============
 
@@ -30,7 +240,7 @@ export interface ServiceUpdate {
  * 获取所有服务列表
  */
 export async function getServices(): Promise<Service[]> {
-  const response = await fetch(`${BASE_URL}/api/v1/services`);
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/services`);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
@@ -44,7 +254,7 @@ export async function getServices(): Promise<Service[]> {
  * 根据 ID 获取单个服务
  */
 export async function getService(id: number): Promise<Service> {
-  const response = await fetch(`${BASE_URL}/api/v1/services/${id}`);
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/services/${id}`);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
@@ -58,7 +268,7 @@ export async function getService(id: number): Promise<Service> {
  * 创建新服务
  */
 export async function createService(service: ServiceCreate): Promise<Service> {
-  const response = await fetch(`${BASE_URL}/api/v1/services`, {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/services`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -78,7 +288,7 @@ export async function createService(service: ServiceCreate): Promise<Service> {
  * 更新服务
  */
 export async function updateService(id: number, service: ServiceUpdate): Promise<Service> {
-  const response = await fetch(`${BASE_URL}/api/v1/services/${id}`, {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/services/${id}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -98,7 +308,7 @@ export async function updateService(id: number, service: ServiceUpdate): Promise
  * 删除服务
  */
 export async function deleteService(id: number): Promise<void> {
-  const response = await fetch(`${BASE_URL}/api/v1/services/${id}`, {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/services/${id}`, {
     method: 'DELETE',
   });
 
@@ -115,7 +325,7 @@ export async function deleteService(id: number): Promise<void> {
  * @returns A promise that resolves to the MCP tools definition.
  */
 export async function getMcpTools(openapiUrl: string) {
-  const response = await fetch(`${BASE_URL}/mcp/v1/tools?openapi_url=${encodeURIComponent(openapiUrl)}`);
+  const response = await fetchWithAuth(`${BASE_URL}/mcp/v1/tools?openapi_url=${encodeURIComponent(openapiUrl)}`);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
@@ -132,7 +342,7 @@ export async function getMcpTools(openapiUrl: string) {
  * @returns A promise that resolves to a list of API endpoints.
  */
 export async function getApiEndpoints(url: string) {
-  const response = await fetch(`${BASE_URL}/api/v1/endpoints?url=${encodeURIComponent(url)}`);
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/endpoints?url=${encodeURIComponent(url)}`);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
@@ -178,7 +388,7 @@ export interface CombinationUpdate {
  * 获取所有组合列表
  */
 export async function getCombinations(): Promise<Combination[]> {
-  const response = await fetch(`${BASE_URL}/api/v1/combinations`);
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/combinations`);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
@@ -192,7 +402,7 @@ export async function getCombinations(): Promise<Combination[]> {
  * 根据 ID 获取单个组合
  */
 export async function getCombination(id: number): Promise<Combination> {
-  const response = await fetch(`${BASE_URL}/api/v1/combinations/${id}`);
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/combinations/${id}`);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
@@ -206,7 +416,7 @@ export async function getCombination(id: number): Promise<Combination> {
  * 创建新组合
  */
 export async function createCombination(combination: CombinationCreate): Promise<Combination> {
-  const response = await fetch(`${BASE_URL}/api/v1/combinations`, {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/combinations`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -226,7 +436,7 @@ export async function createCombination(combination: CombinationCreate): Promise
  * 更新组合
  */
 export async function updateCombination(id: number, combination: CombinationUpdate): Promise<Combination> {
-  const response = await fetch(`${BASE_URL}/api/v1/combinations/${id}`, {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/combinations/${id}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -246,7 +456,7 @@ export async function updateCombination(id: number, combination: CombinationUpda
  * 切换组合状态
  */
 export async function toggleCombinationStatus(id: number, status: 'active' | 'inactive'): Promise<Combination> {
-  const response = await fetch(`${BASE_URL}/api/v1/combinations/${id}/status?status=${status}`, {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/combinations/${id}/status?status=${status}`, {
     method: 'PATCH',
   });
 
@@ -262,7 +472,7 @@ export async function toggleCombinationStatus(id: number, status: 'active' | 'in
  * 删除组合
  */
 export async function deleteCombination(id: number): Promise<void> {
-  const response = await fetch(`${BASE_URL}/api/v1/combinations/${id}`, {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/combinations/${id}`, {
     method: 'DELETE',
   });
 
@@ -302,7 +512,7 @@ export interface McpServerUpdate {
  * 获取所有 MCP 服务列表
  */
 export async function getMcpServers(): Promise<McpServer[]> {
-  const response = await fetch(`${BASE_URL}/api/v1/mcp-servers`);
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/mcp-servers`);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
@@ -316,7 +526,7 @@ export async function getMcpServers(): Promise<McpServer[]> {
  * 根据 ID 获取单个 MCP 服务
  */
 export async function getMcpServer(id: number): Promise<McpServer> {
-  const response = await fetch(`${BASE_URL}/api/v1/mcp-servers/${id}`);
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/mcp-servers/${id}`);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
@@ -330,7 +540,7 @@ export async function getMcpServer(id: number): Promise<McpServer> {
  * 创建新 MCP 服务
  */
 export async function createMcpServer(server: McpServerCreate): Promise<McpServer> {
-  const response = await fetch(`${BASE_URL}/api/v1/mcp-servers`, {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/mcp-servers`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -350,7 +560,7 @@ export async function createMcpServer(server: McpServerCreate): Promise<McpServe
  * 更新 MCP 服务
  */
 export async function updateMcpServer(id: number, server: McpServerUpdate): Promise<McpServer> {
-  const response = await fetch(`${BASE_URL}/api/v1/mcp-servers/${id}`, {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/mcp-servers/${id}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -370,7 +580,7 @@ export async function updateMcpServer(id: number, server: McpServerUpdate): Prom
  * 切换 MCP 服务状态
  */
 export async function toggleMcpServerStatus(id: number, status: 'active' | 'inactive'): Promise<McpServer> {
-  const response = await fetch(`${BASE_URL}/api/v1/mcp-servers/${id}/status?status=${status}`, {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/mcp-servers/${id}/status?status=${status}`, {
     method: 'PATCH',
   });
 
@@ -386,7 +596,7 @@ export async function toggleMcpServerStatus(id: number, status: 'active' | 'inac
  * 删除 MCP 服务
  */
 export async function deleteMcpServer(id: number): Promise<void> {
-  const response = await fetch(`${BASE_URL}/api/v1/mcp-servers/${id}`, {
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/mcp-servers/${id}`, {
     method: 'DELETE',
   });
 
@@ -400,7 +610,7 @@ export async function deleteMcpServer(id: number): Promise<void> {
  * 获取 MCP 服务的配置信息
  */
 export async function getMcpServerConfig(prefix: string): Promise<any> {
-  const response = await fetch(`${BASE_URL}/mcp/${prefix}/config`);
+  const response = await fetchWithAuth(`${BASE_URL}/mcp/${prefix}/config`);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
@@ -442,7 +652,7 @@ export interface DashboardStats {
  * 获取仪表盘统计数据
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const response = await fetch(`${BASE_URL}/api/v1/dashboard/stats`);
+  const response = await fetchWithAuth(`${BASE_URL}/api/v1/dashboard/stats`);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));

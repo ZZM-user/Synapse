@@ -5,14 +5,14 @@
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, Depends
 
-from core.auth import verify_token
+from core.auth import get_current_user
 from mcp.openapi_to_mcp import convert_openapi_to_mcp
 from services.openapi_fetcher import fetch_openapi_spec, extract_api_endpoints
 
-# 路由器级别添加鉴权依赖，所有端点都需要认证
+# 路由器级别添加 JWT 认证依赖，所有端点都需要登录
 router = APIRouter(
     tags=["tools"],
-    dependencies=[Depends(verify_token)]
+    dependencies=[Depends(get_current_user)]
 )
 
 # Mock OpenAPI spec for development/testing if no URL is provided

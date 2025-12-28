@@ -1,7 +1,13 @@
 <template>
   <n-message-provider>
     <n-dialog-provider>
-      <n-layout has-sider style="height: 100vh">
+      <!-- 登录页面：全屏显示，无导航 -->
+      <div v-if="route.name === 'Login'" style="height: 100vh">
+        <router-view />
+      </div>
+
+      <!-- 其他页面：带导航布局 -->
+      <n-layout v-else has-sider style="height: 100vh">
         <n-layout-sider
             bordered
             width="240"
@@ -24,8 +30,18 @@
         </n-layout-sider>
         <n-layout>
           <n-layout-header bordered>
-            <div style="display: flex; align-items: center; padding: 0 24px; height: 60px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 60px;">
               <h2 style="margin: 0; font-size: 18px; font-weight: 600;">{{ currentRouteTitle }}</h2>
+
+              <!-- 用户信息和登出 -->
+              <n-dropdown :options="userMenuOptions" placement="bottom-end" @select="handleUserMenuSelect">
+                <n-button text>
+                  <n-icon size="20" style="margin-right: 8px">
+                    <PersonCircleOutline />
+                  </n-icon>
+                  {{ currentUser?.username || '用户' }}
+                </n-button>
+              </n-dropdown>
             </div>
           </n-layout-header>
           <n-layout-content content-style="padding: 24px;">
@@ -38,8 +54,8 @@
 </template>
 
 <script setup lang="ts">
-import {computed, h} from 'vue';
-import {RouterLink, useRoute} from 'vue-router';
+import {computed, h, ref, onMounted, renderIcon} from 'vue';
+import {RouterLink, useRoute, useRouter} from 'vue-router';
 import type {MenuOption} from 'naive-ui';
 import {
   NDialogProvider,
@@ -49,15 +65,46 @@ import {
   NLayoutHeader,
   NLayoutSider,
   NMenu,
-  NMessageProvider
+  NMessageProvider,
+  NButton,
+  NDropdown,
+  useMessage
 } from 'naive-ui';
-import {CubeOutline, HomeOutline, HardwareChipOutline, ServerOutline} from '@vicons/ionicons5';
+import {CubeOutline, HomeOutline, HardwareChipOutline, ServerOutline, PersonCircleOutline, LogOutOutline} from '@vicons/ionicons5';
+import { getCurrentUser, logout as authLogout } from './utils/auth';
+import type { User } from './services/api';
 
 // Import fonts
 import 'vfonts/Lato.css';
 import 'vfonts/FiraCode.css';
 
 const route = useRoute();
+const router = useRouter();
+const message = useMessage();
+const currentUser = ref<User | null>(null);
+
+// 加载当前用户信息
+onMounted(() => {
+  currentUser.value = getCurrentUser();
+});
+
+// 用户菜单选项
+const userMenuOptions = [
+  {
+    label: '登出',
+    key: 'logout',
+    icon: renderIcon(LogOutOutline)
+  }
+];
+
+// 处理用户菜单选择
+function handleUserMenuSelect(key: string) {
+  if (key === 'logout') {
+    authLogout();
+    message.success('已登出');
+    router.push('/login');
+  }
+}
 
 const menuOptions: MenuOption[] = [
   {
