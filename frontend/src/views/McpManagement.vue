@@ -199,20 +199,17 @@
               <pre><code>{{ JSON.stringify(currentMcpConfig.example, null, 2) }}</code></pre>
             </div>
 
-            <div class="config-help">
-              <h3>配置文件位置</h3>
-              <n-descriptions bordered :column="1" size="small">
-                <n-descriptions-item label="Claude Desktop">
-                  {{ currentMcpConfig.instructions.claude_desktop }}
-                </n-descriptions-item>
-                <n-descriptions-item label="Cursor">
-                  {{ currentMcpConfig.instructions.cursor }}
-                </n-descriptions-item>
-              </n-descriptions>
-              <p style="margin-top: 12px; color: #666; font-size: 13px;">
-                配置后需要重启 AI 工具才能生效
-              </p>
-            </div>
+            <!--            <div class="config-help">-->
+            <!--              <h3>配置文件位置</h3>-->
+            <!--              <n-descriptions bordered :column="1" size="small">-->
+            <!--                <n-descriptions-item label="Claude Desktop">-->
+            <!--                  {{ currentMcpConfig.instructions.claude_desktop }}-->
+            <!--                </n-descriptions-item>-->
+            <!--                <n-descriptions-item label="Cursor">-->
+            <!--                  {{ currentMcpConfig.instructions.cursor }}-->
+            <!--                </n-descriptions-item>-->
+            <!--              </n-descriptions>-->
+            <!--            </div>-->
           </div>
         </n-spin>
 
@@ -231,8 +228,6 @@ import {
   NButton,
   NCard,
   NDataTable,
-  NDescriptions,
-  NDescriptionsItem,
   NForm,
   NFormItem,
   NIcon,
@@ -243,18 +238,15 @@ import {
   NTag,
   useMessage
 } from 'naive-ui';
-import type {
-  McpServer,
-  Combination
-} from '../services/api';
+import type {Combination, McpServer} from '../services/api';
 import {
-  getMcpServers,
   createMcpServer,
-  updateMcpServer,
-  toggleMcpServerStatus,
   deleteMcpServer,
   getCombinations,
-  getMcpServerConfig
+  getMcpServerConfig,
+  getMcpServers,
+  toggleMcpServerStatus,
+  updateMcpServer
 } from '../services/api';
 
 // --- Data & State ---
