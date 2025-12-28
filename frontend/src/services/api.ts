@@ -2,6 +2,112 @@
 
 const BASE_URL = 'http://localhost:8000'; // Backend API base URL
 
+// ============= Service API =============
+
+export interface Service {
+  id: number;
+  name: string;
+  url: string;
+  type: string;
+  status: 'healthy' | 'unhealthy';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ServiceCreate {
+  name: string;
+  url: string;
+  type: string;
+}
+
+export interface ServiceUpdate {
+  name?: string;
+  url?: string;
+  type?: string;
+}
+
+/**
+ * 获取所有服务列表
+ */
+export async function getServices(): Promise<Service[]> {
+  const response = await fetch(`${BASE_URL}/api/v1/services`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 根据 ID 获取单个服务
+ */
+export async function getService(id: number): Promise<Service> {
+  const response = await fetch(`${BASE_URL}/api/v1/services/${id}`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 创建新服务
+ */
+export async function createService(service: ServiceCreate): Promise<Service> {
+  const response = await fetch(`${BASE_URL}/api/v1/services`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(service),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 更新服务
+ */
+export async function updateService(id: number, service: ServiceUpdate): Promise<Service> {
+  const response = await fetch(`${BASE_URL}/api/v1/services/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(service),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * 删除服务
+ */
+export async function deleteService(id: number): Promise<void> {
+  const response = await fetch(`${BASE_URL}/api/v1/services/${id}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+}
+
 /**
  * Fetches the MCP tools for a given OpenAPI specification URL.
  *
@@ -295,6 +401,48 @@ export async function deleteMcpServer(id: number): Promise<void> {
  */
 export async function getMcpServerConfig(prefix: string): Promise<any> {
   const response = await fetch(`${BASE_URL}/mcp/${prefix}/config`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// ============= Dashboard API =============
+
+export interface DashboardStats {
+  services: {
+    total: number;
+  };
+  combinations: {
+    total: number;
+    active: number;
+    inactive: number;
+  };
+  mcp_servers: {
+    total: number;
+    active: number;
+    inactive: number;
+  };
+  endpoints: {
+    total: number;
+  };
+  recent_items: Array<{
+    id: number;
+    name: string;
+    type: 'combination' | 'mcp_server';
+    status: string;
+    created_at: string;
+  }>;
+}
+
+/**
+ * 获取仪表盘统计数据
+ */
+export async function getDashboardStats(): Promise<DashboardStats> {
+  const response = await fetch(`${BASE_URL}/api/v1/dashboard/stats`);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: 'An unknown error occurred' }));

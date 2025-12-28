@@ -26,10 +26,12 @@ from mcp.session import session_manager
 # 模型
 from models.combination import Combination, CombinationCreate, CombinationUpdate
 from models.mcp_server import McpServer, McpServerCreate, McpServerUpdate
+from models.service import Service, ServiceCreate, ServiceUpdate
 
 # Repository 层
 from repositories.combination_repository import CombinationRepository
 from repositories.mcp_server_repository import McpServerRepository
+from repositories.service_repository import ServiceRepository
 
 # 服务层
 from services.openapi_fetcher import fetch_openapi_spec, extract_api_endpoints
@@ -205,6 +207,106 @@ async def get_mcp_tools(openapi_url: Optional[str] = Query(
         # Catch other potential errors during fetch or conversion
         print(f"An unexpected error occurred: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process OpenAPI spec: {e}")
+
+
+# ============= Service Management API =============
+
+@app.get("/api/v1/services", response_model=list[Service])
+async def get_services(db: AsyncSession = Depends(get_db)):
+    """
+    获取所有服务列表
+    """
+    repo = ServiceRepository(db)
+    db_services = await repo.get_all()
+    return [Service.from_orm(s) for s in db_services]
+
+
+@app.get("/api/v1/services/{service_id}", response_model=Service)
+async def get_service(
+    service_id: int = Path(..., description="服务 ID"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    根据 ID 获取单个服务
+    """
+    repo = ServiceRepository(db)
+    db_service = await repo.get_by_id(service_id)
+
+    if not db_service:
+        raise HTTPException(status_code=404, detail=f"服务 ID {service_id} 不存在")
+
+    return Service.from_orm(db_service)
+
+
+@app.post("/api/v1/services", response_model=Service, status_code=201)
+async def create_service(
+    service: ServiceCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    创建新服务
+    """
+    repo = ServiceRepository(db)
+
+    # 创建服务
+    db_service = await repo.create(
+        name=service.name,
+        url=service.url,
+        type=service.type
+    )
+
+    await db.commit()
+    return Service.from_orm(db_service)
+
+
+@app.put("/api/v1/services/{service_id}", response_model=Service)
+async def update_service(
+    service_id: int = Path(..., description="服务 ID"),
+    service_update: ServiceUpdate = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    更新服务信息
+    """
+    repo = ServiceRepository(db)
+
+    # 检查服务是否存在
+    existing = await repo.get_by_id(service_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"服务 ID {service_id} 不存在")
+
+    # 更新服务
+    db_service = await repo.update(
+        service_id=service_id,
+        name=service_update.name,
+        url=service_update.url,
+        type=service_update.type
+    )
+
+    await db.commit()
+
+    if not db_service:
+        raise HTTPException(status_code=404, detail=f"服务 ID {service_id} 不存在")
+
+    return Service.from_orm(db_service)
+
+
+@app.delete("/api/v1/services/{service_id}", status_code=204)
+async def delete_service(
+    service_id: int = Path(..., description="服务 ID"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    删除服务
+    """
+    repo = ServiceRepository(db)
+
+    success = await repo.delete(service_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"服务 ID {service_id} 不存在")
+
+    await db.commit()
+    return None
 
 
 # ============= Combination Management API =============
@@ -498,6 +600,96 @@ async def delete_mcp_server(
 
     await db.commit()
     return None
+
+
+# ============= Dashboard Statistics API =============
+
+@app.get("/api/v1/dashboard/stats")
+async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
+    """
+    获取仪表盘统计数据
+    """
+    from sqlalchemy import select, func
+    from models.db_models import CombinationDB, McpServerDB, ServiceDB
+
+    # 服务统计
+    services_total = await db.scalar(select(func.count()).select_from(ServiceDB))
+
+    # 组合统计
+    combinations_total = await db.scalar(select(func.count()).select_from(CombinationDB))
+    combinations_active = await db.scalar(
+        select(func.count()).select_from(CombinationDB).where(CombinationDB.status == "active")
+    )
+
+    # MCP 服务统计
+    mcp_servers_total = await db.scalar(select(func.count()).select_from(McpServerDB))
+    mcp_servers_active = await db.scalar(
+        select(func.count()).select_from(McpServerDB).where(McpServerDB.status == "active")
+    )
+
+    # 获取最近创建的项目
+    recent_combinations = await db.execute(
+        select(CombinationDB)
+        .order_by(CombinationDB.created_at.desc())
+        .limit(5)
+    )
+    recent_combinations_list = [
+        {
+            "id": c.id,
+            "name": c.name,
+            "type": "combination",
+            "status": c.status,
+            "created_at": c.created_at.isoformat()
+        }
+        for c in recent_combinations.scalars()
+    ]
+
+    recent_servers = await db.execute(
+        select(McpServerDB)
+        .order_by(McpServerDB.created_at.desc())
+        .limit(5)
+    )
+    recent_servers_list = [
+        {
+            "id": s.id,
+            "name": s.name,
+            "type": "mcp_server",
+            "status": s.status,
+            "created_at": s.created_at.isoformat()
+        }
+        for s in recent_servers.scalars()
+    ]
+
+    # 合并并按时间排序
+    recent_items = sorted(
+        recent_combinations_list + recent_servers_list,
+        key=lambda x: x["created_at"],
+        reverse=True
+    )[:5]
+
+    # 计算接口总数（从所有组合中）
+    all_combinations = await db.execute(select(CombinationDB))
+    total_endpoints = sum(len(c.endpoints) for c in all_combinations.scalars())
+
+    return {
+        "services": {
+            "total": services_total or 0
+        },
+        "combinations": {
+            "total": combinations_total or 0,
+            "active": combinations_active or 0,
+            "inactive": (combinations_total or 0) - (combinations_active or 0)
+        },
+        "mcp_servers": {
+            "total": mcp_servers_total or 0,
+            "active": mcp_servers_active or 0,
+            "inactive": (mcp_servers_total or 0) - (mcp_servers_active or 0)
+        },
+        "endpoints": {
+            "total": total_endpoints
+        },
+        "recent_items": recent_items
+    }
 
 
 # ============= MCP Protocol Endpoint =============

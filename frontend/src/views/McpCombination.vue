@@ -158,7 +158,7 @@
           <n-list bordered>
             <n-list-item
                 v-for="service in filteredServices"
-                :key="service.key"
+                :key="service.id"
                 style="cursor: pointer;"
                 @click="handleSelectService(service)"
             >
@@ -241,10 +241,11 @@ import {
   NThing,
   useMessage
 } from 'naive-ui';
-import {getApiEndpoints} from '../services/api';
+import {getApiEndpoints, getServices} from '../services/api';
 import type {
   Combination,
-  CombinationEndpoint
+  CombinationEndpoint,
+  Service
 } from '../services/api';
 import {
   getCombinations,
@@ -255,14 +256,6 @@ import {
 } from '../services/api';
 
 // --- Interfaces ---
-interface Service {
-  key: number;
-  name: string;
-  url: string;
-  type: string;
-  status: 'healthy' | 'unhealthy';
-}
-
 interface ApiEndpoint {
   path: string;
   method: string;
@@ -273,10 +266,9 @@ interface ApiEndpoint {
 const message = useMessage();
 const formRef = ref<FormInst | null>(null);
 
-// 模拟服务列表（从 localStorage 或实际 API 获取）
-const services = ref<Service[]>([
-  {key: 1, name: 'Petstore API', url: 'https://petstore3.swagger.io/api/v3/openapi.json', type: 'OpenAPI 3.0', status: 'healthy'},
-]);
+// 服务列表（从数据库加载）
+const services = ref<Service[]>([]);
+const loadingServices = ref(false);
 
 // 组合管理状态
 const combinations = ref<Combination[]>([]);
@@ -308,7 +300,7 @@ const endpointSelectorMode = ref<'combination' | 'manage'>('combination'); // �
 
 // --- Lifecycle ---
 onMounted(async () => {
-  await loadCombinations();
+  await Promise.all([loadCombinations(), loadServices()]);
 });
 
 // --- Computed ---
@@ -492,6 +484,21 @@ const loadCombinations = async () => {
     }
   } finally {
     loadingCombinations.value = false;
+  }
+};
+
+const loadServices = async () => {
+  loadingServices.value = true;
+  try {
+    services.value = await getServices();
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      message.error(`加载服务列表失败: ${error.message}`);
+    } else {
+      message.error('加载服务列表失败: 未知错误');
+    }
+  } finally {
+    loadingServices.value = false;
   }
 };
 

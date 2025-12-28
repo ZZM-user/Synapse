@@ -68,3 +68,29 @@ class McpServerDB(Base):
 
     def __repr__(self):
         return f"<McpServerDB(id={self.id}, name='{self.name}', prefix='{self.prefix}', status='{self.status}')>"
+
+
+class ServiceDB(Base):
+    """服务数据库模型"""
+    __tablename__ = "services"
+
+    # 主键
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+
+    # 基本信息
+    name = Column(String(255), nullable=False, index=True, comment="服务名称")
+    url = Column(Text, nullable=False, comment="OpenAPI/Swagger 文档地址")
+    type = Column(String(50), nullable=False, comment="文档类型")
+    status = Column(String(20), default="healthy", index=True, comment="状态：healthy/unhealthy")
+
+    # 时间戳
+    created_at = Column(DateTime, default=datetime.now, nullable=False, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, comment="更新时间")
+
+    # 复合索引
+    __table_args__ = (
+        Index('idx_service_status_created', 'status', 'created_at'),
+    )
+
+    def __repr__(self):
+        return f"<ServiceDB(id={self.id}, name='{self.name}', type='{self.type}', status='{self.status}')>"

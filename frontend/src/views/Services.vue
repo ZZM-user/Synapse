@@ -7,13 +7,15 @@
       </n-button>
     </div>
 
-    <n-data-table
-        :columns="columns"
-        :data="services"
-        :pagination="false"
-        :bordered="false"
-        :max-height="400"
-    />
+    <n-spin :show="loading">
+      <n-data-table
+          :columns="columns"
+          :data="services"
+          :pagination="false"
+          :bordered="false"
+          :max-height="400"
+      />
+    </n-spin>
 
     <!-- Add Service Modal -->
     <n-modal v-model:show="showAddModal">
@@ -38,7 +40,7 @@
         </n-form>
         <template #footer>
           <n-button @click="showAddModal = false">取消</n-button>
-          <n-button type="primary" @click="handleAddService" style="margin-left: 12px;">确定</n-button>
+          <n-button type="primary" @click="handleAddService" :loading="submitting" style="margin-left: 12px;">确定</n-button>
         </template>
       </n-card>
     </n-modal>
@@ -75,7 +77,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, h, ref} from 'vue';
+import {computed, h, onMounted, ref} from 'vue';
 import type {DataTableColumns, FormInst, FormValidationError} from 'naive-ui';
 import {
   NButton,
@@ -89,19 +91,18 @@ import {
   NModal,
   NSelect,
   NSpin,
+  useDialog,
   useMessage
 } from 'naive-ui';
-import {getApiEndpoints} from '../services/api';
+import {
+  getApiEndpoints,
+  getServices,
+  createService as createServiceApi,
+  deleteService as deleteServiceApi,
+  type Service
+} from '../services/api';
 
 // --- Interfaces ---
-interface Service {
-  key: number;
-  name: string;
-  url: string;
-  type: string; // Add type property
-  status: 'healthy' | 'unhealthy';
-}
-
 interface ApiEndpoint {
   path: string;
   method: string;
@@ -115,14 +116,14 @@ interface ServiceActions {
 
 // --- Data & State ---
 const message = useMessage();
+const dialog = useDialog();
 const formRef = ref<FormInst | null>(null);
 
 // Service management state
+const loading = ref(false);
+const submitting = ref(false);
 const showAddModal = ref(false);
-const services = ref<Service[]>([
-  // Use a real public API for demonstration
-  {key: 1, name: 'Petstore API', url: 'https://petstore3.swagger.io/api/v3/openapi.json', type: 'OpenAPI 3.0', status: 'healthy'},
-]);
+const services = ref<Service[]>([]);
 const newService = ref({name: '', url: '', type: ''}); // Initialize type to empty string
 
 // API viewing state
@@ -193,25 +194,56 @@ const columns = serviceTableColumns({
     handleViewApis(row.url);
   },
   deleteService: (row: Service) => {
-    services.value = services.value.filter((service) => service.key !== row.key);
-    message.success(`服务 "${row.name}" 已删除`);
+    dialog.warning({
+      title: '确认删除',
+      content: `确定要删除服务 "${row.name}" 吗？此操作不可恢复。`,
+      positiveText: '确定',
+      negativeText: '取消',
+      onPositiveClick: async () => {
+        try {
+          await deleteServiceApi(row.id);
+          message.success(`服务 "${row.name}" 已删除`);
+          await loadServices();
+        } catch (error) {
+          message.error(`删除失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        }
+      }
+    });
   }
 });
 
 // --- Methods ---
+const loadServices = async () => {
+  loading.value = true;
+  try {
+    services.value = await getServices();
+  } catch (error) {
+    console.error('Failed to load services:', error);
+    message.error('加载服务列表失败');
+  } finally {
+    loading.value = false;
+  }
+};
+
 const handleAddService = () => {
-  formRef.value?.validate((errors: Array<FormValidationError> | undefined) => {
+  formRef.value?.validate(async (errors: Array<FormValidationError> | undefined) => {
     if (!errors) {
-      services.value.push({
-        key: Date.now(),
-        name: newService.value.name,
-        url: newService.value.url,
-        type: newService.value.type as string, // Cast to string as it's validated as required
-        status: 'healthy'
-      });
-      message.success('服务添加成功');
-      showAddModal.value = false;
-      newService.value = {name: '', url: '', type: ''};
+      submitting.value = true;
+      try {
+        await createServiceApi({
+          name: newService.value.name,
+          url: newService.value.url,
+          type: newService.value.type,
+        });
+        message.success('服务添加成功');
+        showAddModal.value = false;
+        newService.value = {name: '', url: '', type: ''};
+        await loadServices();
+      } catch (error) {
+        message.error(`添加失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      } finally {
+        submitting.value = false;
+      }
     } else {
       message.error('请填写所有必填项');
     }
@@ -234,6 +266,10 @@ const handleViewApis = async (url: string) => {
     loadingApis.value = false;
   }
 };
+
+onMounted(() => {
+  loadServices();
+});
 </script>
 
 <style scoped>
@@ -248,4 +284,3 @@ h1 {
   margin: 0;
 }
 </style>
-
