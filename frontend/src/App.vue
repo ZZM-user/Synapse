@@ -67,8 +67,7 @@ import {
   NMenu,
   NMessageProvider,
   NButton,
-  NDropdown,
-  useMessage
+  NDropdown
 } from 'naive-ui';
 import {CubeOutline, HomeOutline, HardwareChipOutline, ServerOutline, PersonCircleOutline, LogOutOutline} from '@vicons/ionicons5';
 import { getCurrentUser, logout as authLogout } from './utils/auth';
@@ -80,7 +79,6 @@ import 'vfonts/FiraCode.css';
 
 const route = useRoute();
 const router = useRouter();
-const message = useMessage();
 const currentUser = ref<User | null>(null);
 
 // 辅助函数：渲染图标
@@ -106,7 +104,6 @@ const userMenuOptions = [
 function handleUserMenuSelect(key: string) {
   if (key === 'logout') {
     authLogout();
-    message.success('已登出');
     router.push('/login');
   }
 }
