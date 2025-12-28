@@ -39,8 +39,9 @@ class Combination(CombinationBase):
     createdAt: datetime = Field(default_factory=datetime.now, description="创建时间")
     updatedAt: datetime = Field(default_factory=datetime.now, description="更新时间")
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "from_attributes": True,  # Pydantic v2: 支持从 ORM 模型转换
+        "json_schema_extra": {
             "example": {
                 "id": 1,
                 "name": "宠物店基础服务",
@@ -59,3 +60,30 @@ class Combination(CombinationBase):
                 "updatedAt": "2025-01-01T00:00:00"
             }
         }
+    }
+
+    @classmethod
+    def from_orm(cls, db_obj):
+        """
+        从数据库对象转换为 Pydantic 模型
+
+        Args:
+            db_obj: CombinationDB 数据库对象
+
+        Returns:
+            Combination: Pydantic 模型实例
+        """
+        from models.db_models import CombinationDB
+
+        if not isinstance(db_obj, CombinationDB):
+            raise TypeError(f"期望 CombinationDB 类型，得到 {type(db_obj)}")
+
+        return cls(
+            id=db_obj.id,
+            name=db_obj.name,
+            description=db_obj.description,
+            endpoints=[CombinationEndpoint(**ep) for ep in db_obj.endpoints],
+            status=db_obj.status,
+            createdAt=db_obj.created_at,
+            updatedAt=db_obj.updated_at,
+        )

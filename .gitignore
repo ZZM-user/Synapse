@@ -9,5 +9,16 @@ wheels/
 frontend/node_modules
 /backend/.venv/
 
+# Environment variables
+/backend/.env
+
 # Data persistence
-/backend/data/
+/backend/data/*.db
+/backend/data/*.db-*
+/backend/data/*.db-journal
+/backend/data/*.sqlite
+/backend/data/*.sqlite3
+/backend/data/backups/
+
+# Keep JSON files for now (will be migrated to database)
+# /backend/data/*.json

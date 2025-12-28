@@ -1,0 +1,74 @@
+# Synapse 配置文件
+# 支持环境变量替换，格式：${VAR_NAME}
+
+# 数据库配置
+database:
+  # 数据库类型：sqlite, mysql, postgresql, oracle, dm8
+  type: sqlite
+
+  # SQLite 配置（默认）
+  sqlite:
+    path: ./data/synapse.db
+    echo: false
+    pool_pre_ping: true
+
+  # MySQL 配置
+  mysql:
+    host: localhost
+    port: 3306
+    database: synapse
+    username: synapse_user
+    password: ${MYSQL_PASSWORD}
+    charset: utf8mb4
+    pool_size: 10
+    max_overflow: 20
+    pool_recycle: 3600
+    echo: false
+
+  # PostgreSQL 配置
+  postgresql:
+    host: localhost
+    port: 5432
+    database: synapse
+    username: synapse_user
+    password: ${POSTGRES_PASSWORD}
+    pool_size: 10
+    max_overflow: 20
+    pool_recycle: 3600
+    echo: false
+
+  # Oracle 配置
+  oracle:
+    host: localhost
+    port: 1521
+    service_name: ORCL
+    username: synapse_user
+    password: ${ORACLE_PASSWORD}
+    pool_size: 10
+    max_overflow: 20
+    pool_recycle: 3600
+    echo: false
+
+  # DM8（达梦）配置
+  dm8:
+    host: localhost
+    port: 5236
+    database: SYSDBA
+    username: SYSDBA
+    password: ${DM8_PASSWORD}
+    pool_size: 10
+    max_overflow: 20
+    pool_recycle: 3600
+    echo: false
+
+# 数据迁移配置
+migration:
+  enabled: true          # 是否启用自动 JSON → DB 迁移
+  backup_json: true      # 迁移后是否备份 JSON 文件
+  backup_dir: ./data/backups  # 备份目录
+  on_conflict: skip      # 冲突策略：skip（跳过）, overwrite（覆盖）, fail（失败）
+
+# 应用配置
+app:
+  debug: false
+  log_level: INFO

@@ -14,7 +14,7 @@ AI 智能体世界。
 Synapse 旨在成为您 AI 架构中“业务感知”的突触。它不试图成为一个笨重、无所不包的 API 网关。相反，它专注于**自动化协议转换**、*
 *细粒度工具管理**和**极致适应性**。
 
-## ✨ 核心功能 (v0.5.1)
+## ✨ 核心功能 (v0.6.0)
 
 - **动态 OpenAPI 到 MCP 转换**：核心引擎可以从任何 URL 获取 OpenAPI 3.0 规范，并将其即时转换为符合 MCP v1 的工具集。
 - **全面的 Schema 解析**：
@@ -39,7 +39,7 @@ Synapse 旨在成为您 AI 架构中“业务感知”的突触。它不试图�
     - **独立管理界面**：专门的组合管理界面，支持查看、添加、删除服务中的组合。
     - **状态控制**：快速启用或停用整个 MCP 服务。
     - **完整的 CRUD 操作**：提供 RESTful API 和可视化界面完整支持 MCP 服务的增删改查。
-- **标准 MCP Server 协议** ⭐ **v0.5.1 已完成**：
+- **标准 MCP Server 协议** ⭐ **v0.5.1 功能**：
     - **✅ 符合官方标准**：完全符合 MCP 官方 HTTP + SSE 传输规范。
     - **✅ 单一端点设计**：`/mcp/{prefix}` 端点同时支持 GET（SSE流）和 POST（JSON-RPC）。
     - **✅ 完整会话管理**：支持 `Mcp-Session-Id` 头，实现标准的会话生命周期管理。
@@ -50,6 +50,15 @@ Synapse 旨在成为您 AI 架构中“业务感知”的突触。它不试图�
     - **自动工具聚合**：根据组合自动聚合所有接口，转换为 MCP 工具定义。
     - **代理执行**：自动代理 API 调用，支持 GET/POST/PUT/DELETE/PATCH 等 HTTP 方法。
     - **配置生成**：一键生成标准 MCP 配置，可直接用于 Claude Desktop、Cursor 等 AI 工具。
+- **多数据库持久化** ⭐ **v0.6.0 新增**：
+    - **✅ 多数据库支持**：支持 SQLite、MySQL、PostgreSQL、Oracle、DM8（达梦）五种数据库。
+    - **✅ 灵活配置**：通过 `config.yaml` 配置文件自主选择数据库类型。
+    - **✅ 自动迁移**：首次启动时自动从 JSON 文件迁移数据到数据库，并生成带时间戳的备份。
+    - **✅ 异步 ORM**：基于 SQLAlchemy 2.0 的完整异步数据库操作。
+    - **✅ 数据库迁移**：使用 Alembic 管理数据库版本和迁移脚本。
+    - **✅ Repository 模式**：清晰的数据访问层，便于维护和测试。
+    - **✅ 环境变量支持**：敏感信息（如数据库密码）通过环境变量配置。
+    - **零停机切换**：可随时切换数据库类型，运行迁移即可。
 
 ## ⚠️ 已知问题与限制
 
@@ -73,10 +82,15 @@ Synapse 旨在成为您 AI 架构中“业务感知”的突触。它不试图�
   }
   ```
 
-### 数据持久化
-- **问题**：所有数据存储在内存中，重启后端服务会丢失
-- **影响**：创建的组合和 MCP 服务在服务重启后需要重新创建
-- **解决方案**（阶段 4）：集成数据库（SQLite/PostgreSQL）实现持久化存储
+### ~~数据持久化~~ ✅ 已修复 (v0.6.0)
+- **状态**：✅ 已完全修复
+- **修复内容**：
+  - 实现了多数据库支持（SQLite、MySQL、PostgreSQL、Oracle、DM8）
+  - 基于 SQLAlchemy 2.0 的异步 ORM 架构
+  - 使用 Alembic 进行数据库迁移管理
+  - 自动从 JSON 文件迁移数据并生成备份
+  - Repository 模式的数据访问层
+- **默认配置**：SQLite（无需额外安装，开箱即用）
 
 ### OpenAPI 参数解析
 - **问题**：当前 MCP 工具的 inputSchema 为简化版本，未完整解析 OpenAPI 参数定义
@@ -101,21 +115,68 @@ cd Synapse
 
 ### 2. 设置后端
 
-导航到后端目录，安装依赖项，并运行服务器。
+导航到后端目录，安装依赖项，配置数据库，并运行服务器。
 
 ```bash
 # 从项目根目录
 cd backend
 
 # 使用 uv 安装 Python 依赖项
-uv pip sync pyproject.toml
+uv sync
+
+# （可选）配置数据库
+# 默认使用 SQLite，无需额外配置
+# 如需使用其他数据库，请编辑 config.yaml 文件
+
+# 运行数据库迁移（可选，应用启动时会自动创建表）
+.venv/bin/alembic upgrade head
 
 # 运行 FastAPI 服务器
-# 您也可以从根目录使用以下命令: ./.venv/bin/uvicorn backend.main:app --reload
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+.venv/bin/uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 后端现在运行在 `http://localhost:8000`。
+
+#### 数据库配置说明
+
+Synapse 默认使用 **SQLite** 数据库，数据存储在 `backend/data/synapse.db`，开箱即用无需配置。
+
+如需使用其他数据库，请按以下步骤操作：
+
+1. **复制环境变量模板**：
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **编辑 `config.yaml`** 文件，修改 `database.type` 字段：
+   ```yaml
+   database:
+     type: mysql  # 可选：sqlite, mysql, postgresql, oracle, dm8
+   ```
+
+3. **配置数据库连接**（以 MySQL 为例）：
+   ```yaml
+   mysql:
+     host: localhost
+     port: 3306
+     database: synapse
+     username: synapse_user
+     password: ${MYSQL_PASSWORD}  # 从环境变量读取
+   ```
+
+4. **设置环境变量**（编辑 `.env` 文件）：
+   ```env
+   MYSQL_PASSWORD=your_password
+   ```
+
+5. **运行数据库迁移**：
+   ```bash
+   .venv/bin/alembic upgrade head
+   ```
+
+6. **启动应用**，首次启动时会自动从 JSON 文件迁移数据（如果存在）。
+
+更多详细配置请参考 `backend/config.yaml` 文件中的注释。
 
 ### 3. 设置前端
 
@@ -183,12 +244,27 @@ Synapse v0.5.1 完全支持标准 MCP 协议，可以直接在 Claude Desktop、
 
 ## 🛠️ 技术栈
 
-- **后端框架**：**FastAPI**
-- **Python 包管理器**：**uv**
-- **前端框架**：**Vue 3 + Vite + TypeScript**
-- **UI 组件库**：**Naive UI**
-- **异步 Web 服务器**：**Uvicorn**
-- **HTTP 客户端**：**httpx** (后端), `fetch` (前端)
+### 后端
+- **框架**：**FastAPI** - 现代、快速的 Web 框架
+- **Python 包管理器**：**uv** - 快速的 Python 包管理器
+- **异步 Web 服务器**：**Uvicorn** - ASGI 服务器
+- **HTTP 客户端**：**httpx** - 支持异步的 HTTP 客户端
+- **数据库 ORM**：**SQLAlchemy 2.0** - 强大的异步 ORM
+- **数据库迁移**：**Alembic** - SQLAlchemy 的数据库迁移工具
+- **配置管理**：**PyYAML** + **python-dotenv** - YAML 配置和环境变量
+- **数据验证**：**Pydantic v2** - 数据验证和设置管理
+
+### 前端
+- **框架**：**Vue 3** + **Vite** + **TypeScript**
+- **UI 组件库**：**Naive UI** - Vue 3 的优雅 UI 组件库
+- **HTTP 客户端**：**fetch** - 原生 Web API
+
+### 数据库支持
+- **SQLite** (默认) - aiosqlite
+- **MySQL** - aiomysql + pymysql
+- **PostgreSQL** - asyncpg + psycopg2
+- **Oracle** - oracledb
+- **DM8 (达梦)** - dmPython
 
 ## 🏗️ 路线图
 
@@ -230,9 +306,13 @@ Synapse v0.5.1 完全支持标准 MCP 协议，可以直接在 Claude Desktop、
     - `[ ]` 添加 Origin 头验证（安全性增强）。
     - `[ ]` 添加身份验证机制。
 
-- **🔲 阶段 5：服务发现与持久化 (下一步)**
+- **🔄 阶段 5：服务发现与持久化 (进行中)**
+    - `[x]` 使用数据库（SQLite、MySQL、PostgreSQL、Oracle、DM8）持久化组合和服务配置。
+    - `[x]` 实现 SQLAlchemy 2.0 异步 ORM 架构。
+    - `[x]` 实现 Alembic 数据库迁移管理。
+    - `[x]` 实现自动 JSON 数据迁移和备份功能。
+    - `[x]` 实现 Repository 模式的数据访问层。
     - `[ ]` 集成 Nacos SDK 以实现自动服务发现。
-    - `[ ]` 使用数据库（例如 SQLite、PostgreSQL）持久化组合和服务配置。
     - `[ ]` 实现安全层（白名单）以过滤暴露的 API。
     - `[ ]` 完善 OpenAPI 参数解析，生成完整的 JSON Schema。
 

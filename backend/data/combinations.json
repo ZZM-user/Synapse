@@ -1,0 +1,29 @@
+{
+  "counter": 2,
+  "combinations": {
+    "1": {
+      "name": "宠物店基础服务",
+      "description": "包含宠物查询和用户管理的基础接口",
+      "endpoints": [
+        {
+          "serviceName": "Petstore API",
+          "serviceUrl": "https://petstore3.swagger.io/api/v3/openapi.json",
+          "path": "/pet/{petId}",
+          "method": "GET",
+          "summary": "Find pet by ID"
+        },
+        {
+          "serviceName": "Petstore API",
+          "serviceUrl": "https://petstore3.swagger.io/api/v3/openapi.json",
+          "path": "/user/{username}",
+          "method": "GET",
+          "summary": "Get user by user name"
+        }
+      ],
+      "id": 1,
+      "status": "active",
+      "createdAt": "2025-12-28T16:08:10.245120",
+      "updatedAt": "2025-12-28T16:08:10.245126"
+    }
+  }
+}

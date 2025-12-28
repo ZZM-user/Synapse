@@ -2,39 +2,88 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from datetime import datetime
 from pathlib import Path as PathLib
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, Path, Request
+from fastapi import FastAPI, HTTPException, Query, Path, Request, Depends
 from sse_starlette.sse import EventSourceResponse
 from starlette.middleware.cors import CORSMiddleware
+from sqlalchemy.ext.asyncio import AsyncSession
 
+# 核心模块
+from core.config import load_config
+from core.database import init_database, get_db, db_manager
+from core.migration import auto_migrate_if_needed
+from models.db_models import Base
+
+# MCP 相关
 from mcp.openapi_to_mcp import convert_openapi_to_mcp
 from mcp.protocol import JsonRpcRequest, McpError, create_error_response
 from mcp.server import McpServerHandler
 from mcp.session import session_manager
+
+# 模型
 from models.combination import Combination, CombinationCreate, CombinationUpdate
 from models.mcp_server import McpServer, McpServerCreate, McpServerUpdate
+
+# Repository 层
+from repositories.combination_repository import CombinationRepository
+from repositories.mcp_server_repository import McpServerRepository
+
+# 服务层
 from services.openapi_fetcher import fetch_openapi_spec, extract_api_endpoints
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理 - 启动和关闭时的操作"""
-    # 启动时加载持久化数据
-    load_combinations()
-    load_mcp_servers()
-    init_sample_data()
+    print("=" * 60)
+    print("🚀 Synapse MCP Gateway 启动中...")
+    print("=" * 60)
+
+    # 1. 加载配置
+    print("📋 加载配置文件...")
+    app_config = load_config()
+    print(f"   数据库类型: {app_config.database.type}")
+
+    # 2. 初始化数据库
+    print("🗄️  初始化数据库连接...")
+    manager = init_database(app_config)  # 保存返回的 manager 实例
+
+    # 3. 创建表结构（如果不存在）
+    print("📊 创建数据库表结构...")
+    async with manager.engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    # 4. 执行数据迁移（JSON → 数据库）
+    print("🔄 检查数据迁移...")
+    async with manager.session_maker() as session:
+        migrated = await auto_migrate_if_needed(
+            session=session,
+            config=app_config.migration,
+            data_dir=DATA_DIR
+        )
+        if migrated:
+            print("   数据迁移完成！")
+
+    print("=" * 60)
+    print("✅ Synapse MCP Gateway 已启动")
+    print("   访问 API 文档: http://localhost:8000/docs")
+    print("=" * 60)
+
     yield
-    # 关闭时可以添加清理操作（如果需要）
+
+    # 关闭数据库连接
+    print("\n🛑 关闭数据库连接...")
+    await manager.close()
+    print("✅ Synapse MCP Gateway 已停止")
 
 
 app = FastAPI(
     title="Synapse MCP Gateway",
     description="Converts OpenAPI specifications to AI Agent callable tools (MCP format).",
-    version="0.1.0",
+    version="0.4.0",
     lifespan=lifespan
 )
 
@@ -46,11 +95,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 数据持久化路径
+# 数据目录
 DATA_DIR = PathLib(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
-COMBINATIONS_FILE = DATA_DIR / "combinations.json"
-MCP_SERVERS_FILE = DATA_DIR / "mcp_servers.json"
 
 # Mock OpenAPI spec for development/testing if no URL is provided
 MOCK_OPENAPI_SPEC = {
@@ -99,122 +146,6 @@ MOCK_OPENAPI_SPEC = {
         }
     }
 }
-
-# 内存存储（临时方案，后续可替换为数据库）
-combinations_db: dict[int, Combination] = {}
-combination_id_counter = 1
-
-mcp_servers_db: dict[int, McpServer] = {}
-mcp_server_id_counter = 1
-
-
-# 数据持久化函数
-def save_combinations():
-    """保存组合数据到 JSON 文件"""
-    data = {
-        "counter": combination_id_counter,
-        "combinations": {
-            str(id): comb.model_dump(mode='json')
-            for id, comb in combinations_db.items()
-        }
-    }
-    with open(COMBINATIONS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2, default=str)
-
-
-def load_combinations():
-    """从 JSON 文件加载组合数据"""
-    global combinations_db, combination_id_counter
-
-    if not COMBINATIONS_FILE.exists():
-        return
-
-    try:
-        with open(COMBINATIONS_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-
-        combination_id_counter = data.get("counter", 1)
-        combinations_db = {
-            int(id): Combination(**comb_data)
-            for id, comb_data in data.get("combinations", {}).items()
-        }
-        print(f"Loaded {len(combinations_db)} combinations from {COMBINATIONS_FILE}")
-    except Exception as e:
-        print(f"Failed to load combinations: {e}")
-
-
-def save_mcp_servers():
-    """保存 MCP 服务数据到 JSON 文件"""
-    data = {
-        "counter": mcp_server_id_counter,
-        "servers": {
-            str(id): server.model_dump(mode='json')
-            for id, server in mcp_servers_db.items()
-        }
-    }
-    with open(MCP_SERVERS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2, default=str)
-
-
-def load_mcp_servers():
-    """从 JSON 文件加载 MCP 服务数据"""
-    global mcp_servers_db, mcp_server_id_counter
-
-    if not MCP_SERVERS_FILE.exists():
-        return
-
-    try:
-        with open(MCP_SERVERS_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-
-        mcp_server_id_counter = data.get("counter", 1)
-        mcp_servers_db = {
-            int(id): McpServer(**server_data)
-            for id, server_data in data.get("servers", {}).items()
-        }
-        print(f"Loaded {len(mcp_servers_db)} MCP servers from {MCP_SERVERS_FILE}")
-    except Exception as e:
-        print(f"Failed to load MCP servers: {e}")
-
-
-# 添加示例数据（可选，用于测试）
-def init_sample_data():
-    """初始化示例数据（仅在数据文件不存在时）"""
-    global combination_id_counter, mcp_server_id_counter
-
-    # 只有在没有已保存数据时才初始化示例数据
-    if COMBINATIONS_FILE.exists() or MCP_SERVERS_FILE.exists():
-        return
-
-    # 示例组合
-    sample_combination = Combination(
-        id=1,
-        name="宠物店基础服务",
-        description="包含宠物查询和用户管理的基础接口",
-        status="active",
-        endpoints=[
-            {
-                "serviceName": "Petstore API",
-                "serviceUrl": "https://petstore3.swagger.io/api/v3/openapi.json",
-                "path": "/pet/{petId}",
-                "method": "GET",
-                "summary": "Find pet by ID"
-            },
-            {
-                "serviceName": "Petstore API",
-                "serviceUrl": "https://petstore3.swagger.io/api/v3/openapi.json",
-                "path": "/user/{username}",
-                "method": "GET",
-                "summary": "Get user by user name"
-            }
-        ],
-        createdAt=datetime.now(),
-        updatedAt=datetime.now()
-    )
-    combinations_db[1] = sample_combination
-    combination_id_counter = 2
-    save_combinations()
-    print("Initialized sample data")
 
 
 # ============= Helper Functions =============
@@ -279,240 +210,300 @@ async def get_mcp_tools(openapi_url: Optional[str] = Query(
 # ============= Combination Management API =============
 
 @app.get("/api/v1/combinations", response_model=list[Combination])
-async def get_combinations():
+async def get_combinations(db: AsyncSession = Depends(get_db)):
     """
     获取所有组合列表
     """
-    return list(combinations_db.values())
+    repo = CombinationRepository(db)
+    db_combinations = await repo.get_all()
+    return [Combination.from_orm(c) for c in db_combinations]
 
 
 @app.get("/api/v1/combinations/{combination_id}", response_model=Combination)
-async def get_combination(combination_id: int = Path(..., description="组合 ID")):
+async def get_combination(
+    combination_id: int = Path(..., description="组合 ID"),
+    db: AsyncSession = Depends(get_db)
+):
     """
     根据 ID 获取单个组合
     """
-    if combination_id not in combinations_db:
+    repo = CombinationRepository(db)
+    db_combination = await repo.get_by_id(combination_id)
+
+    if not db_combination:
         raise HTTPException(status_code=404, detail=f"组合 ID {combination_id} 不存在")
-    return combinations_db[combination_id]
+
+    return Combination.from_orm(db_combination)
 
 
 @app.post("/api/v1/combinations", response_model=Combination, status_code=201)
-async def create_combination(combination: CombinationCreate):
+async def create_combination(
+    combination: CombinationCreate,
+    db: AsyncSession = Depends(get_db)
+):
     """
     创建新组合
     """
-    global combination_id_counter
+    repo = CombinationRepository(db)
 
-    new_combination = Combination(
-        id=combination_id_counter,
+    # 创建组合
+    db_combination = await repo.create(
         name=combination.name,
         description=combination.description,
-        endpoints=combination.endpoints,
-        status="active",
-        createdAt=datetime.now(),
-        updatedAt=datetime.now()
+        endpoints=[ep.model_dump() for ep in combination.endpoints]
     )
 
-    combinations_db[combination_id_counter] = new_combination
-    combination_id_counter += 1
-    save_combinations()  # 保存数据
-
-    return new_combination
+    await db.commit()
+    return Combination.from_orm(db_combination)
 
 
 @app.put("/api/v1/combinations/{combination_id}", response_model=Combination)
 async def update_combination(
-        combination_id: int = Path(..., description="组合 ID"),
-        combination_update: CombinationUpdate = None
+    combination_id: int = Path(..., description="组合 ID"),
+    combination_update: CombinationUpdate = None,
+    db: AsyncSession = Depends(get_db)
 ):
     """
     更新组合信息
     """
-    if combination_id not in combinations_db:
+    repo = CombinationRepository(db)
+
+    # 检查组合是否存在
+    existing = await repo.get_by_id(combination_id)
+    if not existing:
         raise HTTPException(status_code=404, detail=f"组合 ID {combination_id} 不存在")
 
-    existing_combination = combinations_db[combination_id]
+    # 更新组合
+    db_combination = await repo.update(
+        combination_id=combination_id,
+        name=combination_update.name,
+        description=combination_update.description,
+        endpoints=[ep.model_dump() for ep in combination_update.endpoints] if combination_update.endpoints else None
+    )
 
-    # 更新字段
-    if combination_update.name is not None:
-        existing_combination.name = combination_update.name
-    if combination_update.description is not None:
-        existing_combination.description = combination_update.description
-    if combination_update.endpoints is not None:
-        existing_combination.endpoints = combination_update.endpoints
+    await db.commit()
 
-    existing_combination.updatedAt = datetime.now()
-    save_combinations()  # 保存数据
+    if not db_combination:
+        raise HTTPException(status_code=404, detail=f"组合 ID {combination_id} 不存在")
 
-    return existing_combination
+    return Combination.from_orm(db_combination)
 
 
 @app.patch("/api/v1/combinations/{combination_id}/status", response_model=Combination)
 async def toggle_combination_status(
-        combination_id: int = Path(..., description="组合 ID"),
-        status: str = Query(..., description="新状态：active 或 inactive")
+    combination_id: int = Path(..., description="组合 ID"),
+    status: str = Query(..., description="新状态：active 或 inactive"),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     切换组合状态（启用/停用）
     """
-    if combination_id not in combinations_db:
-        raise HTTPException(status_code=404, detail=f"组合 ID {combination_id} 不存在")
-
     if status not in ["active", "inactive"]:
         raise HTTPException(status_code=400, detail="状态值必须为 'active' 或 'inactive'")
 
-    existing_combination = combinations_db[combination_id]
-    existing_combination.status = status
-    existing_combination.updatedAt = datetime.now()
-    save_combinations()  # 保存数据
+    repo = CombinationRepository(db)
 
-    return existing_combination
+    # 检查组合是否存在
+    existing = await repo.get_by_id(combination_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"组合 ID {combination_id} 不存在")
+
+    # 手动更新状态（因为 toggle_status 会切换，而我们这里需要设置特定值）
+    from datetime import datetime
+    db_combination = await repo.update(
+        combination_id=combination_id,
+        name=None,
+        description=None,
+        endpoints=None
+    )
+
+    # 直接设置状态
+    existing.status = status
+    existing.updated_at = datetime.now()
+    await db.flush()
+    await db.commit()
+    await db.refresh(existing)
+
+    return Combination.from_orm(existing)
 
 
 @app.delete("/api/v1/combinations/{combination_id}", status_code=204)
-async def delete_combination(combination_id: int = Path(..., description="组合 ID")):
+async def delete_combination(
+    combination_id: int = Path(..., description="组合 ID"),
+    db: AsyncSession = Depends(get_db)
+):
     """
     删除组合
     """
-    if combination_id not in combinations_db:
+    repo = CombinationRepository(db)
+
+    success = await repo.delete(combination_id)
+    if not success:
         raise HTTPException(status_code=404, detail=f"组合 ID {combination_id} 不存在")
 
-    del combinations_db[combination_id]
-    save_combinations()  # 保存数据
+    await db.commit()
     return None
 
 
 # ============= MCP Server Management API =============
 
 @app.get("/api/v1/mcp-servers", response_model=list[McpServer])
-async def get_mcp_servers():
+async def get_mcp_servers(db: AsyncSession = Depends(get_db)):
     """
     获取所有 MCP 服务列表
     """
-    return list(mcp_servers_db.values())
+    repo = McpServerRepository(db)
+    db_servers = await repo.get_all()
+    return [McpServer.from_orm(s) for s in db_servers]
 
 
 @app.get("/api/v1/mcp-servers/{server_id}", response_model=McpServer)
-async def get_mcp_server(server_id: int = Path(..., description="MCP 服务 ID")):
+async def get_mcp_server(
+    server_id: int = Path(..., description="MCP 服务 ID"),
+    db: AsyncSession = Depends(get_db)
+):
     """
     根据 ID 获取单个 MCP 服务
     """
-    if server_id not in mcp_servers_db:
+    repo = McpServerRepository(db)
+    db_server = await repo.get_by_id(server_id)
+
+    if not db_server:
         raise HTTPException(status_code=404, detail=f"MCP 服务 ID {server_id} 不存在")
-    return mcp_servers_db[server_id]
+
+    return McpServer.from_orm(db_server)
 
 
 @app.post("/api/v1/mcp-servers", response_model=McpServer, status_code=201)
-async def create_mcp_server(server: McpServerCreate):
+async def create_mcp_server(
+    server: McpServerCreate,
+    db: AsyncSession = Depends(get_db)
+):
     """
     创建新 MCP 服务
     """
-    global mcp_server_id_counter
+    server_repo = McpServerRepository(db)
+    comb_repo = CombinationRepository(db)
 
     # 检查 prefix 是否已存在
-    for existing_server in mcp_servers_db.values():
-        if existing_server.prefix == server.prefix:
-            raise HTTPException(status_code=400, detail=f"MCP 前缀 '{server.prefix}' 已存在，请使用其他前缀")
+    if await server_repo.check_prefix_exists(server.prefix):
+        raise HTTPException(status_code=400, detail=f"MCP 前缀 '{server.prefix}' 已存在，请使用其他前缀")
 
     # 验证所有 combination_ids 是否存在
     for comb_id in server.combination_ids:
-        if comb_id not in combinations_db:
+        if not await comb_repo.get_by_id(comb_id):
             raise HTTPException(status_code=400, detail=f"组合 ID {comb_id} 不存在")
 
-    new_server = McpServer(
-        id=mcp_server_id_counter,
+    # 创建 MCP 服务
+    db_server = await server_repo.create(
         name=server.name,
         prefix=server.prefix,
         description=server.description,
-        combination_ids=server.combination_ids,
-        status="active",
-        createdAt=datetime.now(),
-        updatedAt=datetime.now()
+        combination_ids=server.combination_ids
     )
 
-    mcp_servers_db[mcp_server_id_counter] = new_server
-    mcp_server_id_counter += 1
-    save_mcp_servers()  # 保存数据
-
-    return new_server
+    await db.commit()
+    return McpServer.from_orm(db_server)
 
 
 @app.put("/api/v1/mcp-servers/{server_id}", response_model=McpServer)
 async def update_mcp_server(
-        server_id: int = Path(..., description="MCP 服务 ID"),
-        server_update: McpServerUpdate = None
+    server_id: int = Path(..., description="MCP 服务 ID"),
+    server_update: McpServerUpdate = None,
+    db: AsyncSession = Depends(get_db)
 ):
     """
     更新 MCP 服务信息
     """
-    if server_id not in mcp_servers_db:
+    server_repo = McpServerRepository(db)
+    comb_repo = CombinationRepository(db)
+
+    # 检查服务是否存在
+    existing = await server_repo.get_by_id(server_id)
+    if not existing:
         raise HTTPException(status_code=404, detail=f"MCP 服务 ID {server_id} 不存在")
 
-    existing_server = mcp_servers_db[server_id]
-
-    # 更新字段
-    if server_update.name is not None:
-        existing_server.name = server_update.name
-    if server_update.description is not None:
-        existing_server.description = server_update.description
+    # 如果更新了 combination_ids，验证它们是否存在
     if server_update.combination_ids is not None:
-        # 验证所有 combination_ids 是否存在
         for comb_id in server_update.combination_ids:
-            if comb_id not in combinations_db:
+            if not await comb_repo.get_by_id(comb_id):
                 raise HTTPException(status_code=400, detail=f"组合 ID {comb_id} 不存在")
-        existing_server.combination_ids = server_update.combination_ids
 
-    existing_server.updatedAt = datetime.now()
-    save_mcp_servers()  # 保存数据
+    # 更新服务
+    db_server = await server_repo.update(
+        server_id=server_id,
+        name=server_update.name,
+        prefix=None,  # 不允许更新 prefix
+        description=server_update.description,
+        combination_ids=server_update.combination_ids
+    )
+
+    await db.commit()
+
+    if not db_server:
+        raise HTTPException(status_code=404, detail=f"MCP 服务 ID {server_id} 不存在")
 
     # 通知工具列表已变更
-    await notify_tools_changed(existing_server.prefix)
+    await notify_tools_changed(db_server.prefix)
 
-    return existing_server
+    return McpServer.from_orm(db_server)
 
 
 @app.patch("/api/v1/mcp-servers/{server_id}/status", response_model=McpServer)
 async def toggle_mcp_server_status(
-        server_id: int = Path(..., description="MCP 服务 ID"),
-        status: str = Query(..., description="新状态：active 或 inactive")
+    server_id: int = Path(..., description="MCP 服务 ID"),
+    status: str = Query(..., description="新状态：active 或 inactive"),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     切换 MCP 服务状态（启用/停用）
     """
-    if server_id not in mcp_servers_db:
-        raise HTTPException(status_code=404, detail=f"MCP 服务 ID {server_id} 不存在")
-
     if status not in ["active", "inactive"]:
         raise HTTPException(status_code=400, detail="状态值必须为 'active' 或 'inactive'")
 
-    existing_server = mcp_servers_db[server_id]
-    existing_server.status = status
-    existing_server.updatedAt = datetime.now()
-    save_mcp_servers()  # 保存数据
+    repo = McpServerRepository(db)
 
-    # 通知工具列表已变更（状态变化也会影响可用工具）
-    await notify_tools_changed(existing_server.prefix)
+    # 检查服务是否存在
+    existing = await repo.get_by_id(server_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"MCP 服务 ID {server_id} 不存在")
 
-    return existing_server
+    # 直接设置状态
+    from datetime import datetime
+    existing.status = status
+    existing.updated_at = datetime.now()
+    await db.flush()
+    await db.commit()
+    await db.refresh(existing)
+
+    # 通知工具列表已变更
+    await notify_tools_changed(existing.prefix)
+
+    return McpServer.from_orm(existing)
 
 
 @app.delete("/api/v1/mcp-servers/{server_id}", status_code=204)
-async def delete_mcp_server(server_id: int = Path(..., description="MCP 服务 ID")):
+async def delete_mcp_server(
+    server_id: int = Path(..., description="MCP 服务 ID"),
+    db: AsyncSession = Depends(get_db)
+):
     """
     删除 MCP 服务
     """
-    if server_id not in mcp_servers_db:
+    repo = McpServerRepository(db)
+
+    success = await repo.delete(server_id)
+    if not success:
         raise HTTPException(status_code=404, detail=f"MCP 服务 ID {server_id} 不存在")
 
-    del mcp_servers_db[server_id]
-    save_mcp_servers()  # 保存数据
+    await db.commit()
     return None
 
 
 # ============= MCP Protocol Endpoint =============
 
 @app.api_route("/mcp/{prefix}", methods=["GET", "POST"])
-async def mcp_endpoint(prefix: str, request: Request):
+async def mcp_endpoint(prefix: str, request: Request, db: AsyncSession = Depends(get_db)):
     """
     标准 MCP 协议端点（HTTP + SSE 传输）
 
@@ -537,11 +528,8 @@ async def mcp_endpoint(prefix: str, request: Request):
     from fastapi.responses import JSONResponse
 
     # 查找对应的 MCP Server
-    mcp_server = None
-    for server in mcp_servers_db.values():
-        if server.prefix == prefix:
-            mcp_server = server
-            break
+    server_repo = McpServerRepository(db)
+    mcp_server = await server_repo.get_by_prefix(prefix)
 
     if not mcp_server:
         raise HTTPException(status_code=404, detail=f"MCP Server with prefix '{prefix}' not found")
@@ -637,14 +625,18 @@ async def mcp_endpoint(prefix: str, request: Request):
             response.headers["MCP-Protocol-Version"] = protocol_version
             return response
 
+        # 获取所有组合（用于 McpServerHandler）
+        comb_repo = CombinationRepository(db)
+        all_combinations = await comb_repo.get_all()
+        combinations_list = [Combination.from_orm(c).model_dump() for c in all_combinations]
+
         # 特殊处理 initialize 请求
         if rpc_request.method == "initialize":
             # 创建新会话
             session = await session_manager.create_session(prefix)
 
             # 创建 MCP Server Handler
-            server_dict = mcp_server.model_dump()
-            combinations_list = [comb.model_dump() for comb in combinations_db.values()]
+            server_dict = McpServer.from_orm(mcp_server).model_dump()
 
             handler = McpServerHandler(
                 server_config=server_dict,
@@ -692,8 +684,7 @@ async def mcp_endpoint(prefix: str, request: Request):
         session.update_activity()
 
         # 创建 MCP Server Handler
-        server_dict = mcp_server.model_dump()
-        combinations_list = [comb.model_dump() for comb in combinations_db.values()]
+        server_dict = McpServer.from_orm(mcp_server).model_dump()
 
         handler = McpServerHandler(
             server_config=server_dict,
@@ -715,18 +706,15 @@ async def mcp_endpoint(prefix: str, request: Request):
 
 
 @app.get("/mcp/{prefix}/config")
-async def get_mcp_config(prefix: str):
+async def get_mcp_config(prefix: str, db: AsyncSession = Depends(get_db)):
     """
     获取 MCP Server 的配置信息
 
     返回可以直接复制到 AI 工具配置文件中的标准配置
     """
     # 查找对应的 MCP Server
-    mcp_server = None
-    for server in mcp_servers_db.values():
-        if server.prefix == prefix:
-            mcp_server = server
-            break
+    repo = McpServerRepository(db)
+    mcp_server = await repo.get_by_prefix(prefix)
 
     if not mcp_server:
         raise HTTPException(status_code=404, detail=f"MCP Server with prefix '{prefix}' not found")
