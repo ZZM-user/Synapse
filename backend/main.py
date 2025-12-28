@@ -2,11 +2,13 @@
 from typing import Optional
 from datetime import datetime
 import json
+import asyncio
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Path, Request
 from fastapi.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
+from sse_starlette.sse import EventSourceResponse
 
 from mcp.openapi_to_mcp import convert_openapi_to_mcp
 from services.openapi_fetcher import fetch_openapi_spec, extract_api_endpoints
@@ -14,6 +16,7 @@ from models.combination import Combination, CombinationCreate, CombinationUpdate
 from models.mcp_server import McpServer, McpServerCreate, McpServerUpdate
 from mcp.protocol import JsonRpcRequest, McpError, create_error_response
 from mcp.server import McpServerHandler
+from mcp.session import session_manager
 
 app = FastAPI(
     title="Synapse MCP Gateway",
@@ -119,6 +122,24 @@ def init_sample_data():
 
 # 在应用启动时初始化示例数据
 init_sample_data()
+
+
+# ============= Helper Functions =============
+
+async def notify_tools_changed(prefix: str):
+    """
+    通知工具列表已变更
+
+    Args:
+        prefix: MCP Server 前缀
+    """
+    notification = {
+        "jsonrpc": "2.0",
+        "method": "notifications/tools/list_changed"
+    }
+
+    await session_manager.broadcast_to_prefix(prefix, notification)
+    print(f"Notified tools changed for prefix: {prefix}")
 
 
 @app.get("/api/v1/endpoints")
@@ -345,6 +366,9 @@ async def update_mcp_server(
 
     existing_server.updatedAt = datetime.now()
 
+    # 通知工具列表已变更
+    await notify_tools_changed(existing_server.prefix)
+
     return existing_server
 
 
@@ -366,6 +390,9 @@ async def toggle_mcp_server_status(
     existing_server.status = status
     existing_server.updatedAt = datetime.now()
 
+    # 通知工具列表已变更（状态变化也会影响可用工具）
+    await notify_tools_changed(existing_server.prefix)
+
     return existing_server
 
 
@@ -383,24 +410,31 @@ async def delete_mcp_server(server_id: int = Path(..., description="MCP 服务 I
 
 # ============= MCP Protocol Endpoint =============
 
-@app.post("/mcp/{prefix}")
+@app.api_route("/mcp/{prefix}", methods=["GET", "POST"])
 async def mcp_endpoint(prefix: str, request: Request):
     """
-    MCP 协议端点（SSE 传输）
+    标准 MCP 协议端点（HTTP + SSE 传输）
 
-    支持标准 MCP 协议，可直接在 Cursor、Claude Desktop 等工具中使用
+    符合 MCP 官方标准，同时支持 GET 和 POST 请求：
+    - GET: 打开 SSE 流接收服务器推送消息
+    - POST: 发送 JSON-RPC 请求并获取响应
 
-    配置示例：
+    支持的 HTTP 头：
+    - Mcp-Session-Id: 会话标识（POST 请求必需）
+    - MCP-Protocol-Version: 协议版本（必需）
+    - Accept: text/event-stream（GET 请求）
+
+    Claude Desktop 配置示例：
     {
-      "services": [
-        {
-          "name": "your-service-name",
-          "type": "sse",
-          "url": "http://localhost:8000/mcp/your-prefix"
+      "mcpServers": {
+        "synapse": {
+          "url": "http://localhost:8000/mcp/synapse"
         }
-      ]
+      }
     }
     """
+    from fastapi.responses import JSONResponse
+
     # 查找对应的 MCP Server
     mcp_server = None
     for server in mcp_servers_db.values():
@@ -415,36 +449,168 @@ async def mcp_endpoint(prefix: str, request: Request):
     if mcp_server.status != "active":
         raise HTTPException(status_code=403, detail=f"MCP Server '{prefix}' is inactive")
 
-    # 解析 JSON-RPC 请求
-    try:
-        body = await request.json()
-        rpc_request = JsonRpcRequest(**body)
-    except Exception as e:
-        error_response = create_error_response(
-            code=McpError.PARSE_ERROR,
-            message=f"Invalid JSON-RPC request: {str(e)}",
-            id=None
+    # 获取协议版本（如果提供）
+    protocol_version = request.headers.get("MCP-Protocol-Version", "2024-11-05")
+
+    # GET 请求：返回 SSE 流
+    if request.method == "GET":
+        # 获取或创建会话
+        session_id = request.headers.get("Mcp-Session-Id")
+
+        if session_id:
+            # 验证现有会话
+            session = await session_manager.get_session(session_id)
+            if not session or session.prefix != prefix:
+                raise HTTPException(status_code=404, detail="Invalid session ID")
+        else:
+            # 创建新会话
+            session = await session_manager.create_session(prefix)
+
+        async def event_generator():
+            """SSE 事件生成器"""
+            try:
+                # 发送连接确认
+                yield {
+                    "event": "endpoint",
+                    "data": json.dumps({
+                        "jsonrpc": "2.0",
+                        "method": "endpoint",
+                        "params": {
+                            "endpoint": f"/mcp/{prefix}"
+                        }
+                    })
+                }
+
+                # 持续监听队列中的消息
+                while True:
+                    try:
+                        # 等待消息，设置超时以便定期发送 keepalive
+                        message = await asyncio.wait_for(
+                            session.queue.get(),
+                            timeout=30.0  # 30秒超时
+                        )
+
+                        # 发送消息（可以是通知、请求或响应）
+                        yield {
+                            "event": "message",
+                            "data": json.dumps(message)
+                        }
+
+                        # 更新会话活动时间
+                        session.update_activity()
+
+                    except asyncio.TimeoutError:
+                        # 发送 keepalive 心跳
+                        yield {
+                            "event": "ping",
+                            "data": json.dumps({"type": "ping"})
+                        }
+                        session.update_activity()
+
+            except asyncio.CancelledError:
+                # 客户端断开连接
+                print(f"SSE connection closed for session {session.session_id}")
+            finally:
+                # 清理会话
+                await session_manager.remove_session(session.session_id)
+
+        # 返回 SSE 响应，带会话 ID 头
+        response = EventSourceResponse(event_generator())
+        response.headers["Mcp-Session-Id"] = session.session_id
+        response.headers["MCP-Protocol-Version"] = protocol_version
+        return response
+
+    # POST 请求：处理 JSON-RPC 请求
+    else:
+        # 解析 JSON-RPC 请求
+        try:
+            body = await request.json()
+            rpc_request = JsonRpcRequest(**body)
+        except Exception as e:
+            error_response = create_error_response(
+                code=McpError.PARSE_ERROR,
+                message=f"Invalid JSON-RPC request: {str(e)}",
+                id=None
+            )
+            response = JSONResponse(content=error_response)
+            response.headers["MCP-Protocol-Version"] = protocol_version
+            return response
+
+        # 特殊处理 initialize 请求
+        if rpc_request.method == "initialize":
+            # 创建新会话
+            session = await session_manager.create_session(prefix)
+
+            # 创建 MCP Server Handler
+            server_dict = mcp_server.model_dump()
+            combinations_list = [comb.model_dump() for comb in combinations_db.values()]
+
+            handler = McpServerHandler(
+                server_config=server_dict,
+                combinations=combinations_list
+            )
+
+            # 处理初始化请求
+            result = await handler.handle_request(
+                method=rpc_request.method,
+                params=rpc_request.params,
+                request_id=rpc_request.id
+            )
+
+            # 返回响应，带会话 ID 头
+            response = JSONResponse(content=result)
+            response.headers["Mcp-Session-Id"] = session.session_id
+            response.headers["MCP-Protocol-Version"] = protocol_version
+            return response
+
+        # 其他请求需要验证会话
+        session_id = request.headers.get("Mcp-Session-Id")
+        if not session_id:
+            error_response = create_error_response(
+                code=McpError.INVALID_REQUEST,
+                message="Missing Mcp-Session-Id header",
+                id=rpc_request.id
+            )
+            response = JSONResponse(content=error_response, status_code=400)
+            response.headers["MCP-Protocol-Version"] = protocol_version
+            return response
+
+        # 验证会话
+        session = await session_manager.get_session(session_id)
+        if not session or session.prefix != prefix:
+            error_response = create_error_response(
+                code=McpError.INVALID_REQUEST,
+                message="Invalid session ID",
+                id=rpc_request.id
+            )
+            response = JSONResponse(content=error_response, status_code=404)
+            response.headers["MCP-Protocol-Version"] = protocol_version
+            return response
+
+        # 更新会话活动时间
+        session.update_activity()
+
+        # 创建 MCP Server Handler
+        server_dict = mcp_server.model_dump()
+        combinations_list = [comb.model_dump() for comb in combinations_db.values()]
+
+        handler = McpServerHandler(
+            server_config=server_dict,
+            combinations=combinations_list
         )
-        return error_response
 
-    # 创建 MCP Server Handler
-    # 将 Pydantic 模型转换为字典
-    server_dict = mcp_server.model_dump()
-    combinations_list = [comb.model_dump() for comb in combinations_db.values()]
+        # 处理请求
+        result = await handler.handle_request(
+            method=rpc_request.method,
+            params=rpc_request.params,
+            request_id=rpc_request.id
+        )
 
-    handler = McpServerHandler(
-        server_config=server_dict,
-        combinations=combinations_list
-    )
-
-    # 处理请求
-    response = await handler.handle_request(
-        method=rpc_request.method,
-        params=rpc_request.params,
-        request_id=rpc_request.id
-    )
-
-    return response
+        # 返回响应
+        response = JSONResponse(content=result)
+        response.headers["Mcp-Session-Id"] = session_id
+        response.headers["MCP-Protocol-Version"] = protocol_version
+        return response
 
 
 @app.get("/mcp/{prefix}/config")
@@ -452,7 +618,7 @@ async def get_mcp_config(prefix: str):
     """
     获取 MCP Server 的配置信息
 
-    返回可以直接复制到 AI 工具配置文件中的配置
+    返回可以直接复制到 AI 工具配置文件中的标准配置
     """
     # 查找对应的 MCP Server
     mcp_server = None
@@ -464,7 +630,7 @@ async def get_mcp_config(prefix: str):
     if not mcp_server:
         raise HTTPException(status_code=404, detail=f"MCP Server with prefix '{prefix}' not found")
 
-    # 生成 HTTP 方式配置（远程 MCP Server）
+    # 生成标准 HTTP + SSE 配置（单一端点）
     config = {
         mcp_server.prefix: {
             "url": f"http://localhost:8000/mcp/{mcp_server.prefix}"
@@ -479,13 +645,21 @@ async def get_mcp_config(prefix: str):
         "config": config,
         "usage": "将以下配置复制到您的 AI 工具配置文件中（如 Claude Desktop 的 claude_desktop_config.json）",
         "example": example,
-        "note": "这是一个远程 MCP Server，其他人只需要配置 URL 即可使用，无需安装任何文件",
+        "note": "这是一个标准的远程 MCP Server，支持 HTTP + SSE 传输（单一端点同时支持 GET 和 POST）",
         "endpoint": f"http://localhost:8000/mcp/{mcp_server.prefix}",
         "instructions": {
             "claude_desktop": "打开 ~/Library/Application Support/Claude/claude_desktop_config.json (macOS) 或 %APPDATA%\\Claude\\claude_desktop_config.json (Windows)",
             "cursor": "Settings → MCP Servers → 添加配置",
             "general": "将 example 中的配置复制到 mcpServers 字段中，然后重启 AI 工具"
-        }
+        },
+        "important": [
+            "单一端点同时处理 GET（SSE流）和 POST（JSON-RPC请求）",
+            "初始化时服务器会返回 Mcp-Session-Id 头",
+            "后续请求需要在头部携带此 Session ID",
+            "配置更新后客户端会通过 SSE 流收到通知",
+            "Synapse 后端服务需要持续运行",
+            "如果部署在服务器上，将 localhost 替换为实际服务器地址"
+        ]
     }
 
 

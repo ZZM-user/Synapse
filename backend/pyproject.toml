@@ -8,5 +8,6 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "httpx",
-    "PyYAML"
+    "PyYAML",
+    "sse-starlette",
 ]

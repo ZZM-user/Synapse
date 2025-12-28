@@ -32,12 +32,21 @@ class McpServerHandler:
         self.server_config = server_config
         self.combinations = combinations
         self.prefix = server_config.get("prefix", "")
+        self._tools_cache: Optional[List[McpTool]] = None
+
+    def invalidate_cache(self):
+        """使工具缓存失效（当配置变更时调用）"""
+        self._tools_cache = None
 
     def get_tools(self) -> List[McpTool]:
         """
         获取所有可用工具列表
         聚合所有组合中的接口并转换为 MCP 工具
         """
+        # 使用缓存提高性能
+        if self._tools_cache is not None:
+            return self._tools_cache
+
         tools = []
         combination_ids = self.server_config.get("combination_ids", [])
 
@@ -63,6 +72,7 @@ class McpServerHandler:
                     print(f"Failed to convert endpoint to tool: {e}")
                     continue
 
+        self._tools_cache = tools
         return tools
 
     async def handle_tools_list(self, request_id: Optional[int | str] = None) -> Dict[str, Any]:
@@ -188,22 +198,31 @@ class McpServerHandler:
                 id=request_id
             )
 
-    async def handle_initialize(self, request_id: Optional[int | str] = None) -> Dict[str, Any]:
+    async def handle_initialize(self, params: Optional[Dict[str, Any]] = None, request_id: Optional[int | str] = None) -> Dict[str, Any]:
         """
         处理 initialize 请求
+
+        Args:
+            params: 初始化参数
+            request_id: 请求 ID
 
         Returns:
             JSON-RPC 响应
         """
+        # 提取客户端协议版本
+        client_protocol_version = params.get("protocolVersion", "2024-11-05") if params else "2024-11-05"
+
         return create_success_response(
             result={
-                "protocolVersion": "2024-11-05",
+                "protocolVersion": client_protocol_version,  # 回显客户端版本
                 "capabilities": {
-                    "tools": {},
+                    "tools": {
+                        "listChanged": True  # 支持工具列表变更通知
+                    },
                 },
                 "serverInfo": {
                     "name": self.server_config.get("name", "Synapse MCP Server"),
-                    "version": "0.1.0"
+                    "version": "0.4.0"
                 }
             },
             id=request_id
@@ -222,7 +241,7 @@ class McpServerHandler:
             JSON-RPC 响应
         """
         if method == "initialize":
-            return await self.handle_initialize(request_id)
+            return await self.handle_initialize(params, request_id)
         elif method == "tools/list":
             return await self.handle_tools_list(request_id)
         elif method == "tools/call":
@@ -247,3 +266,4 @@ class McpServerHandler:
                 message=f"Method not found: {method}",
                 id=request_id
             )
+

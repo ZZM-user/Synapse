@@ -210,8 +210,11 @@
                 <n-descriptions-item label="服务名称">
                   {{ Object.keys(currentMcpConfig.config)[0] }}
                 </n-descriptions-item>
-                <n-descriptions-item label="服务地址">
-                  <n-tag type="info">{{ currentMcpConfig.endpoint }}</n-tag>
+                <n-descriptions-item label="MCP 端点">
+                  <n-tag type="success">{{ currentMcpConfig.endpoint }}</n-tag>
+                  <p style="margin: 4px 0 0 0; font-size: 12px; color: #666;">
+                    此端点同时支持 GET（SSE流）和 POST（JSON-RPC请求）
+                  </p>
                 </n-descriptions-item>
               </n-descriptions>
             </div>
@@ -233,10 +236,7 @@
               <div style="margin-top: 16px; padding: 12px; background: #f0f9ff; border-radius: 6px; border-left: 4px solid #0ea5e9;">
                 <p style="margin: 0; color: #0369a1; font-weight: 500;">💡 重要提示</p>
                 <ul style="margin: 8px 0 0 0; padding-left: 20px; color: #075985;">
-                  <li>这是一个远程 MCP Server，需要 Synapse 后端服务持续运行</li>
-                  <li>其他人只需要配置 URL 即可使用，无需安装文件</li>
-                  <li>如果部署在服务器上，将 localhost 替换为实际服务器地址</li>
-                  <li>配置后需要重启 AI 工具才能生效</li>
+                  <li v-for="(tip, index) in currentMcpConfig.important" :key="index">{{ tip }}</li>
                 </ul>
               </div>
             </div>

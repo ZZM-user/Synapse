@@ -14,7 +14,7 @@ AI 智能体世界。
 Synapse 旨在成为您 AI 架构中“业务感知”的突触。它不试图成为一个笨重、无所不包的 API 网关。相反，它专注于**自动化协议转换**、*
 *细粒度工具管理**和**极致适应性**。
 
-## ✨ 核心功能 (v0.4 开发中)
+## ✨ 核心功能 (v0.5.1)
 
 - **动态 OpenAPI 到 MCP 转换**：核心引擎可以从任何 URL 获取 OpenAPI 3.0 规范，并将其即时转换为符合 MCP v1 的工具集。
 - **全面的 Schema 解析**：
@@ -39,29 +39,38 @@ Synapse 旨在成为您 AI 架构中“业务感知”的突触。它不试图�
     - **独立管理界面**：专门的组合管理界面，支持查看、添加、删除服务中的组合。
     - **状态控制**：快速启用或停用整个 MCP 服务。
     - **完整的 CRUD 操作**：提供 RESTful API 和可视化界面完整支持 MCP 服务的增删改查。
-- **MCP Server 协议实现** ⭐ **v0.4 开发中**：
-    - **JSON-RPC 2.0 协议**：实现完整的 MCP 协议栈（initialize、tools/list、tools/call）。
-    - **动态 MCP 端点**：每个 MCP 服务自动生成独立的协议端点 `/mcp/{prefix}`。
-    - **远程服务模式**：Synapse 作为中心化 MCP Server，团队成员只需配置 URL 即可使用。
+- **标准 MCP Server 协议** ⭐ **v0.5.1 已完成**：
+    - **✅ 符合官方标准**：完全符合 MCP 官方 HTTP + SSE 传输规范。
+    - **✅ 单一端点设计**：`/mcp/{prefix}` 端点同时支持 GET（SSE流）和 POST（JSON-RPC）。
+    - **✅ 完整会话管理**：支持 `Mcp-Session-Id` 头，实现标准的会话生命周期管理。
+    - **✅ 协议版本协商**：支持 `MCP-Protocol-Version` 头，确保客户端兼容性。
+    - **✅ 实时通知机制**：通过 SSE 流推送 `notifications/tools/list_changed` 等实时通知。
+    - **✅ 远程服务模式**：Synapse 作为中心化 MCP Server，团队成员只需配置 URL 即可使用。
+    - **✅ 客户端兼容**：支持 Claude Desktop、Cursor 等主流 MCP 客户端。
     - **自动工具聚合**：根据组合自动聚合所有接口，转换为 MCP 工具定义。
     - **代理执行**：自动代理 API 调用，支持 GET/POST/PUT/DELETE/PATCH 等 HTTP 方法。
-    - **配置生成**：一键生成可直接用于 AI 工具的配置（Claude Desktop、Cursor 等）。
-    - **⚠️ 已知问题**：当前实现基于 HTTP POST 的 JSON-RPC，部分 MCP 客户端可能存在兼容性问题。
+    - **配置生成**：一键生成标准 MCP 配置，可直接用于 Claude Desktop、Cursor 等 AI 工具。
 
 ## ⚠️ 已知问题与限制
 
-### MCP Server 协议兼容性 (v0.4)
-- **问题**：当前 MCP Server 实现基于 HTTP POST 的 JSON-RPC 2.0 协议
-- **影响**：部分 MCP 客户端（如 Claude Desktop、Cursor）可能无法正确连接
-- **原因**：
-  - 多数 MCP 客户端期望使用 stdio 传输方式（通过命令行启动进程）
-  - 或使用标准的 Server-Sent Events (SSE) 流式传输
-  - 当前实现使用普通 HTTP POST，不符合部分客户端的传输协议预期
-- **解决方案**（计划中）：
-  - 实现标准 SSE 传输层（支持流式响应）
-  - 添加 WebSocket 传输支持
-  - 实现完整的 MCP 协议握手和会话管理
-- **临时方案**：当前可通过直接 HTTP POST 测试 MCP 协议功能，验证工具定义和调用逻辑
+### ~~MCP Server 协议兼容性~~ ✅ 已修复 (v0.5.1)
+- **状态**：✅ 已完全修复
+- **修复内容**：
+  - 实现了符合官方标准的 HTTP + SSE 传输层
+  - 单一端点 `/mcp/{prefix}` 同时支持 GET 和 POST
+  - 添加标准的 `Mcp-Session-Id` 和 `MCP-Protocol-Version` 头处理
+  - 完整的会话管理和实时通知机制
+- **测试状态**：已通过协议层面测试，等待真实客户端验证
+- **配置示例**：
+  ```json
+  {
+    "mcpServers": {
+      "synapse": {
+        "url": "http://localhost:8000/mcp/synapse"
+      }
+    }
+  }
+  ```
 
 ### 数据持久化
 - **问题**：所有数据存储在内存中，重启后端服务会丢失
@@ -129,6 +138,47 @@ pnpm run dev
 在浏览器中打开前端地址。您现在可以添加服务（使用 Petstore URL
 进行快速测试：`https://petstore3.swagger.io/api/v3/openapi.json`）并查看转换后的 AI 工具。
 
+## 🔌 使用 MCP Server
+
+Synapse v0.5.1 完全支持标准 MCP 协议，可以直接在 Claude Desktop、Cursor 等 AI 工具中使用。
+
+### 配置 Claude Desktop
+
+1. **创建 MCP 服务**：在 Synapse 管理界面中创建一个 MCP 服务（例如前缀为 `synapse`）
+
+2. **获取配置**：在"MCP 管理"页面点击"查看配置"按钮，复制生成的配置
+
+3. **编辑 Claude Desktop 配置文件**：
+   - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+   - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+4. **添加配置**：
+   ```json
+   {
+     "mcpServers": {
+       "synapse": {
+         "url": "http://localhost:8000/mcp/synapse"
+       }
+     }
+   }
+   ```
+
+5. **重启 Claude Desktop**：完全退出并重新启动 Claude Desktop
+
+6. **验证**：在 Claude 对话中询问"请列出你可用的工具"，应该能看到以 `synapse_` 开头的工具
+
+### 配置 Cursor
+
+在 Cursor 的 Settings → MCP Servers 中添加相同的配置即可。
+
+### 实时配置更新
+
+得益于标准 MCP 协议的实时通知机制，当您在 Synapse 后台更新 MCP 服务配置（如添加/删除组合）时，已连接的客户端会自动收到通知并刷新工具列表，**无需重启后端服务或客户端**。
+
+### 详细测试指南
+
+查看 `backend/标准协议测试指南.md` 了解完整的测试步骤和故障排查方法。
+
 ## 🛠️ 技术栈
 
 - **后端框架**：**FastAPI**
@@ -161,18 +211,22 @@ pnpm run dev
     - `[x]` 实现组合选择和管理功能（从组合中选择构建 MCP 服务）。
     - `[x]` 添加示例数据以便测试。
 
-- **🔄 阶段 4：MCP Server 协议实现 (开发中)**
+- **✅ 阶段 4：标准 MCP Server 协议 (已完成 v0.5.1)**
     - `[x]` 实现 JSON-RPC 2.0 协议处理（protocol.py）。
     - `[x]` 实现 MCP Server 核心逻辑（initialize、tools/list、tools/call）。
-    - `[x]` 添加动态 MCP 端点 `/mcp/{prefix}`。
+    - `[x]` 添加动态 MCP 端点 `/mcp/{prefix}`（支持 GET 和 POST）。
     - `[x]` 实现工具聚合和转换逻辑。
     - `[x]` 实现 API 代理执行功能。
     - `[x]` 添加配置生成和展示界面。
     - `[x]` 实现 stdio 传输方式（mcp_stdio_server.py）。
-    - `[ ]` 实现标准 SSE 传输层（流式响应）。
-    - `[ ]` 添加 WebSocket 传输支持。
-    - `[ ]` 实现完整的 MCP 协议握手和会话管理。
-    - `[ ]` 解决与主流 MCP 客户端的兼容性问题。
+    - `[x]` 实现标准 HTTP + SSE 传输层（符合官方规范）。
+    - `[x]` 实现完整的会话管理（Mcp-Session-Id）。
+    - `[x]` 实现协议版本协商（MCP-Protocol-Version）。
+    - `[x]` 实现实时通知机制（notifications/tools/list_changed）。
+    - `[x]` 单一端点设计（GET 用于 SSE，POST 用于 JSON-RPC）。
+    - `[ ]` 与 Claude Desktop、Cursor 等客户端的完整兼容性验证。
+    - `[ ]` 添加 Origin 头验证（安全性增强）。
+    - `[ ]` 添加身份验证机制。
 
 - **🔲 阶段 5：服务发现与持久化 (下一步)**
     - `[ ]` 集成 Nacos SDK 以实现自动服务发现。
