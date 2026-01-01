@@ -1,4 +1,4 @@
-~~# Synapse
+# Synapse
 
 **让你传统项目上的 REST API 秒变 MCP Servers**
 
