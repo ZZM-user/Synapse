@@ -3,6 +3,7 @@
 MCP Server 核心逻辑
 处理工具列表、工具调用等
 """
+import re
 from typing import Dict, List, Any, Optional
 import httpx
 from mcp.protocol import (
@@ -116,29 +117,47 @@ class McpServerHandler:
             JSON-RPC 响应
         """
         try:
-            # 从参数中提取必要信息
-            method = arguments.get("_method", "GET")
-            path = arguments.get("_path", "")
-            service_url = arguments.get("_serviceUrl", "")
+            # Copy arguments to avoid modifying the original
+            args = arguments.copy()
 
-            if not service_url or not path:
+            # 从参数中提取必要信息
+            method = args.get("_method", "GET")
+            path_template = args.get("_path", "")
+            service_url = args.get("_serviceUrl", "")
+
+            if not service_url or not path_template:
                 return create_error_response(
                     code=McpError.INVALID_PARAMS,
                     message="Missing required parameters: _serviceUrl or _path",
                     id=request_id
                 )
 
-            # 构建完整 URL
-            # 需要处理 service_url 可能是完整的 OpenAPI spec URL 的情况
-            # 这里简化处理，假设 service_url 是 API base URL
-            # 实际应该解析 OpenAPI spec 获取 servers 信息
-            base_url = service_url.replace("/openapi.json", "").replace("/swagger.json", "")
-            full_url = f"{base_url}{path}"
+            # 1. 处理路径参数 (Path Parameters)
+            # 查找路径中的参数，如 /pet/{petId}
+            path_params = re.findall(r"\{([a-zA-Z0-9_]+)\}", path_template)
+            actual_path = path_template
 
-            # 准备请求参数
+            for param_name in path_params:
+                if param_name in args:
+                    val = args.pop(param_name)  # 从参数中移除，避免重复发送
+                    actual_path = actual_path.replace(f"{{{param_name}}}", str(val))
+                else:
+                    # 如果缺少路径参数，可能导致调用失败，但暂时不做严格校验
+                    pass
+
+            # 构建完整 URL
+            base_url = service_url.replace("/openapi.json", "").replace("/swagger.json", "")
+            full_url = f"{base_url}{actual_path}"
+
+            # 2. 处理请求体 (Request Body)
+            json_body = None
+            if "body" in args:
+                json_body = args.pop("body")
+
+            # 3. 准备剩余参数 (Query Params)
             # 过滤掉内部参数（以 _ 开头的）
             request_params = {
-                k: v for k, v in arguments.items()
+                k: v for k, v in args.items()
                 if not k.startswith("_")
             }
 
@@ -146,14 +165,25 @@ class McpServerHandler:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 if method.upper() == "GET":
                     response = await client.get(full_url, params=request_params)
-                elif method.upper() == "POST":
-                    response = await client.post(full_url, json=request_params)
-                elif method.upper() == "PUT":
-                    response = await client.put(full_url, json=request_params)
                 elif method.upper() == "DELETE":
                     response = await client.delete(full_url, params=request_params)
-                elif method.upper() == "PATCH":
-                    response = await client.patch(full_url, json=request_params)
+                elif method.upper() in ["POST", "PUT", "PATCH"]:
+                    # 如果有显式的 body 参数，使用它作为 JSON body
+                    # 剩余的 request_params 作为 query params
+                    if json_body is not None:
+                        response = await client.request(
+                            method, 
+                            full_url, 
+                            json=json_body, 
+                            params=request_params
+                        )
+                    else:
+                        # 否则，将所有参数作为 JSON body
+                        response = await client.request(
+                            method, 
+                            full_url, 
+                            json=request_params
+                        )
                 else:
                     return create_error_response(
                         code=McpError.INVALID_PARAMS,

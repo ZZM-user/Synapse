@@ -80,16 +80,55 @@ def convert_openapi_endpoint_to_mcp_tool(
     tool_name = f"{prefix}_{method}_{path}" if prefix else f"{method}_{path}"
 
     # 工具描述
-    description = endpoint.get("summary", "") or f"{method.upper()} {endpoint.get('path', '')}"
+    description = endpoint.get("summary", "") or endpoint.get("description", "") or f"{method.upper()} {endpoint.get('path', '')}"
 
-    # 输入 schema（简化版，实际需要解析 OpenAPI 参数）
+    # 输入 schema
     input_schema = {
         "type": "object",
         "properties": {},
         "required": []
     }
 
-    # 添加基本元数据
+    # 处理参数 (Query, Path, Header, Cookie)
+    for param in endpoint.get("parameters", []):
+        param_name = param.get("name")
+        if not param_name:
+            continue
+
+        param_schema = param.get("schema", {})
+        description = param.get("description", "")
+        
+        # 添加参数到 schema
+        input_schema["properties"][param_name] = {
+            "type": param_schema.get("type", "string"),
+            "description": description,
+            # 复制其他 schema 属性 (format, enum, etc.)
+            **{k: v for k, v in param_schema.items() if k not in ["type", "description"]}
+        }
+        
+        if param.get("required", False):
+            input_schema["required"].append(param_name)
+
+    # 处理请求体 (Request Body)
+    req_body = endpoint.get("requestBody")
+    if req_body:
+        content = req_body.get("content", {})
+        # 优先处理 application/json
+        json_content = content.get("application/json")
+        if json_content and "schema" in json_content:
+            body_schema = json_content["schema"]
+            body_desc = req_body.get("description", "Request body")
+            
+            # 将请求体作为一个名为 'body' 的参数
+            input_schema["properties"]["body"] = {
+                "type": "object",
+                "description": body_desc,
+                **body_schema
+            }
+            if req_body.get("required", False):
+                input_schema["required"].append("body")
+
+    # 添加基本元数据（隐藏参数）
     input_schema["properties"]["_method"] = {
         "type": "string",
         "description": "HTTP method",

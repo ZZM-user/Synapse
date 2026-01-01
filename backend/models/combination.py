@@ -11,6 +11,10 @@ class CombinationEndpoint(BaseModel):
     path: str = Field(..., description="API 路径")
     method: str = Field(..., description="HTTP 方法")
     summary: str = Field(default="", description="接口描述")
+    description: str | None = Field(default="", description="详细描述")
+    operationId: str | None = Field(default="", description="操作 ID")
+    parameters: List[dict] | None = Field(default_factory=list, description="OpenAPI 参数定义")
+    requestBody: dict | None = Field(None, description="OpenAPI 请求体定义")
 
 
 class CombinationBase(BaseModel):

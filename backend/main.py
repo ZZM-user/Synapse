@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path as PathLib
 
 import uvicorn
+import asyncio
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
@@ -17,6 +18,7 @@ from core.database import init_database
 from core.migration import auto_migrate_if_needed
 from core.init_admin import ensure_default_admin
 from models.db_models import Base
+from mcp.session import session_manager
 
 # API 路由
 from api import services, combinations, mcp_servers, dashboard, tools, mcp_protocol, auth, users
@@ -24,6 +26,20 @@ from api import services, combinations, mcp_servers, dashboard, tools, mcp_proto
 # 数据目录
 DATA_DIR = PathLib(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
+
+
+async def run_session_cleanup():
+    """Background task to clean up stale sessions"""
+    while True:
+        try:
+            # Check every 10 minutes
+            await asyncio.sleep(600)
+            await session_manager.cleanup_stale_sessions()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            print(f"Error in session cleanup task: {e}")
+            await asyncio.sleep(60)
 
 
 @asynccontextmanager
@@ -62,6 +78,10 @@ async def lifespan(app: FastAPI):
     print("👤 检查默认管理员账户...")
     async with manager.session_maker() as session:
         await ensure_default_admin(session)
+    
+    # 6. 启动会话清理任务
+    print("🧹 启动会话清理任务...")
+    cleanup_task = asyncio.create_task(run_session_cleanup())
 
     print("=" * 60)
     print("✅ Synapse MCP Gateway 已启动")
@@ -70,8 +90,16 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    # 停止后台任务
+    print("\n🛑 停止后台任务...")
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+
     # 关闭数据库连接
-    print("\n🛑 关闭数据库连接...")
+    print("🛑 关闭数据库连接...")
     await manager.close()
     print("✅ Synapse MCP Gateway 已停止")
 
